@@ -1,0 +1,491 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <defs>
+    <!-- Background Gradients -->
+    <radialGradient id="bg-grad" cx="50%" cy="50%" r="75%">
+      <stop offset="0%" stop-color="#1a103c"/>
+      <stop offset="50%" stop-color="#0d0722"/>
+      <stop offset="100%" stop-color="#04020a"/>
+    </radialGradient>
+    
+    <linearGradient id="portal-grad-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2fe"/>
+      <stop offset="50%" stop-color="#9b51e0"/>
+      <stop offset="100%" stop-color="#ff007f"/>
+    </linearGradient>
+
+    <linearGradient id="portal-grad-2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffab00"/>
+      <stop offset="50%" stop-color="#ff007f"/>
+      <stop offset="100%" stop-color="#00d2ff"/>
+    </linearGradient>
+
+    <radialGradient id="portal-core" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="30%" stop-color="#e0f7fa"/>
+      <stop offset="70%" stop-color="#80deea"/>
+      <stop offset="100%" stop-color="#00acc1" stop-opacity="0.2"/>
+    </radialGradient>
+
+    <!-- Energy Streams -->
+    <linearGradient id="stream-drive" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4285F4"/>
+      <stop offset="50%" stop-color="#00f2fe"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+
+    <linearGradient id="stream-sheets" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0F9D58"/>
+      <stop offset="50%" stop-color="#57bb8a"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+
+    <linearGradient id="stream-gas" x1="100%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#FF6D00"/>
+      <stop offset="50%" stop-color="#ffab00"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+
+    <linearGradient id="stream-eco" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#EA4335"/>
+      <stop offset="50%" stop-color="#FBBC05"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+
+    <!-- Filters for Glows -->
+    <filter id="glow-heavy" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="16" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="glow-soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="badge-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="15" flood-color="#000" flood-opacity="0.6"/>
+    </filter>
+
+    <!-- Clip Path for City inside Portal -->
+    <clipPath id="portal-clip">
+      <circle cx="960" cy="500" r="210" />
+    </clipPath>
+  </defs>
+
+  <!-- Dark Space Background -->
+  <rect width="1920" height="1080" fill="url(#bg-grad)"/>
+
+  <!-- Stars & Celestial Objects Background -->
+  <g opacity="0.7">
+    <!-- Starfield with twinkling animations -->
+    <circle cx="150" cy="120" r="2.5" fill="#fff">
+      <animate attributeName="opacity" values="0.2;1;0.2" dur="2.2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="280" cy="350" r="2" fill="#00f2fe">
+      <animate attributeName="opacity" values="0.1;0.9;0.1" dur="1.8s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="420" cy="100" r="3" fill="#fff">
+      <animate attributeName="opacity" values="0.3;1;0.3" dur="3s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="750" cy="180" r="2" fill="#ffab00">
+      <animate attributeName="opacity" values="0.2;1;0.2" dur="2.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="1150" cy="120" r="2.5" fill="#fff">
+      <animate attributeName="opacity" values="0.4;1;0.4" dur="2.8s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="1380" cy="80" r="3.5" fill="#ff007f">
+      <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.1s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="1700" cy="200" r="2.5" fill="#00f2fe">
+      <animate attributeName="opacity" values="0.3;1;0.3" dur="1.9s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="1820" cy="400" r="2" fill="#fff"/>
+    <circle cx="100" cy="700" r="2.5" fill="#ffab00"/>
+    <circle cx="250" cy="900" r="3" fill="#fff">
+      <animate attributeName="opacity" values="0.2;1;0.2" dur="2.7s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="1650" cy="850" r="2.5" fill="#00f2fe">
+      <animate attributeName="opacity" values="0.1;0.9;0.1" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="1780" cy="700" r="2" fill="#fff"/>
+    <circle cx="900" cy="950" r="2.5" fill="#fff"/>
+    
+    <!-- Cartoon Sparkles -->
+    <path d="M350,180 L355,195 L370,200 L355,205 L350,220 L345,205 L330,200 L345,195 Z" fill="#fff">
+      <animate attributeName="opacity" values="0.1;1;0.1" dur="1.6s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="rotate" from="0 350 200" to="360 350 200" dur="10s" repeatCount="indefinite"/>
+    </path>
+    <path d="M1550,150 L1554,162 L1566,166 L1554,170 L1550,182 L1546,170 L1534,166 L1546,162 Z" fill="#00f2fe">
+      <animate attributeName="opacity" values="0.2;1;0.2" dur="2s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="rotate" from="0 1550 166" to="-360 1550 166" dur="8s" repeatCount="indefinite"/>
+    </path>
+    <path d="M1680,600 L1683,610 L1693,613 L1683,616 L1680,626 L1677,616 L1667,613 L1677,610 Z" fill="#ffab00">
+      <animate attributeName="opacity" values="0.1;1;0.1" dur="1.4s" repeatCount="indefinite"/>
+    </path>
+    <path d="M220,620 L223,630 L233,633 L223,636 L220,646 L217,636 L207,633 L217,630 Z" fill="#ff007f">
+      <animate attributeName="opacity" values="0.2;1;0.2" dur="1.8s" repeatCount="indefinite"/>
+    </path>
+
+    <!-- Cartoon Ringed Planet -->
+    <g transform="translate(1620, 180) rotate(-25)">
+      <ellipse cx="0" cy="0" rx="45" ry="45" fill="#ffab00"/>
+      <ellipse cx="0" cy="0" rx="80" ry="16" fill="none" stroke="#ffd54f" stroke-width="8" opacity="0.8"/>
+      <ellipse cx="0" cy="0" rx="95" ry="20" fill="none" stroke="#ff8f00" stroke-width="4" opacity="0.6"/>
+    </g>
+
+    <!-- Cartoon Spiral Galaxy -->
+    <g transform="translate(260, 220) rotate(30)" opacity="0.5">
+      <ellipse cx="0" cy="0" rx="120" ry="40" fill="none" stroke="#9b51e0" stroke-width="15" filter="url(#glow-soft)"/>
+      <ellipse cx="0" cy="0" rx="70" ry="20" fill="none" stroke="#00f2fe" stroke-width="10"/>
+      <animateTransform attributeName="transform" type="rotate" from="0 260 220" to="360 260 220" dur="30s" repeatCount="indefinite"/>
+    </g>
+  </g>
+
+  <!-- Perspective Cyber Grid Floor with Pulse -->
+  <g opacity="0.35">
+    <path d="M0,1080 L960,700 L1920,1080" stroke="#00f2fe" stroke-width="2.5" fill="none"/>
+    <path d="M200,1080 L960,700 L1720,1080" stroke="#00f2fe" stroke-width="2" fill="none"/>
+    <path d="M500,1080 L960,700 L1420,1080" stroke="#00f2fe" stroke-width="2" fill="none"/>
+    <path d="M750,1080 L960,700 L1170,1080" stroke="#00f2fe" stroke-width="2" fill="none"/>
+    <!-- Horizontal Grid Lines -->
+    <line x1="0" y1="1020" x2="1920" y2="1020" stroke="#00f2fe" stroke-width="2"/>
+    <line x1="150" y1="950" x2="1770" y2="950" stroke="#00f2fe" stroke-width="1.8"/>
+    <line x1="320" y1="880" x2="1600" y2="880" stroke="#00f2fe" stroke-width="1.5"/>
+    <line x1="500" y1="810" x2="1420" y2="810" stroke="#00f2fe" stroke-width="1.5"/>
+    <line x1="680" y1="750" x2="1240" y2="750" stroke="#00f2fe" stroke-width="1.2"/>
+    <animate attributeName="opacity" values="0.25;0.45;0.25" dur="3s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- Energy Stream Curves & Dash Flow -->
+  <g fill="none" stroke-linecap="round">
+    <!-- Top-Left Drive Stream (Synchronized with Icon 1) -->
+    <path d="M450,280 C600,280 750,380 900,470" stroke="url(#stream-drive)" stroke-width="14" filter="url(#glow-soft)">
+      <animate attributeName="opacity" values="1;0.2;0.2;0.2;1" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+    </path>
+    <path d="M450,280 C600,280 750,380 900,470" stroke="#ffffff" stroke-width="5" stroke-dasharray="20,20">
+      <animate attributeName="stroke-dashoffset" values="80;0" dur="1s" repeatCount="indefinite"/>
+    </path>
+
+    <!-- Top-Right Sheets Stream (Synchronized with Icon 2) -->
+    <path d="M1470,280 C1320,280 1170,380 1020,470" stroke="url(#stream-sheets)" stroke-width="14" filter="url(#glow-soft)">
+      <animate attributeName="opacity" values="0.2;1;0.2;0.2;0.2" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+    </path>
+    <path d="M1470,280 C1320,280 1170,380 1020,470" stroke="#ffffff" stroke-width="5" stroke-dasharray="20,20">
+      <animate attributeName="stroke-dashoffset" values="80;0" dur="1s" repeatCount="indefinite"/>
+    </path>
+
+    <!-- Bottom-Right GAS Stream (Synchronized with Icon 3) -->
+    <path d="M1470,750 C1320,750 1170,620 1020,530" stroke="url(#stream-gas)" stroke-width="14" filter="url(#glow-soft)">
+      <animate attributeName="opacity" values="0.2;0.2;1;0.2;0.2" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+    </path>
+    <path d="M1470,750 C1320,750 1170,620 1020,530" stroke="#ffffff" stroke-width="5" stroke-dasharray="20,20">
+      <animate attributeName="stroke-dashoffset" values="80;0" dur="1s" repeatCount="indefinite"/>
+    </path>
+
+    <!-- Bottom-Left Ecosystem Stream (Synchronized with Icon 4) -->
+    <path d="M450,750 C600,750 750,620 900,530" stroke="url(#stream-eco)" stroke-width="14" filter="url(#glow-soft)">
+      <animate attributeName="opacity" values="0.2;0.2;0.2;1;0.2" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+    </path>
+    <path d="M450,750 C600,750 750,620 900,530" stroke="#ffffff" stroke-width="5" stroke-dasharray="20,20">
+      <animate attributeName="stroke-dashoffset" values="80;0" dur="1s" repeatCount="indefinite"/>
+    </path>
+  </g>
+
+  <!-- Animated Flying Data Particles -->
+  <g fill="#ffffff" filter="url(#glow-soft)">
+    <!-- Stream 1 Particles -->
+    <circle cx="450" cy="280" r="7">
+      <animate attributeName="cx" values="450;600;750;900" dur="1.5s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="280;280;380;470" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Stream 2 Particles -->
+    <circle cx="1470" cy="280" r="7">
+      <animate attributeName="cx" values="1470;1320;1170;1020" dur="1.5s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="280;280;380;470" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Stream 3 Particles -->
+    <circle cx="1470" cy="750" r="7">
+      <animate attributeName="cx" values="1470;1320;1170;1020" dur="1.5s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="750;750;620;530" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Stream 4 Particles -->
+    <circle cx="450" cy="750" r="7">
+      <animate attributeName="cx" values="450;600;750;900" dur="1.5s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="750;750;620;530" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- ================= TIME-SPACE PORTAL (CENTER) ================= -->
+  <g id="time-space-portal">
+    <!-- Outer Portal Glow Ring with Pulsing/Flashing SMIL Animation -->
+    <circle cx="960" cy="500" r="260" fill="none" stroke="url(#portal-grad-1)" stroke-width="20" filter="url(#glow-heavy)">
+      <animate attributeName="opacity" values="0.4;1;0.3;0.9;0.4" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="stroke-width" values="16;28;18;30;16" dur="2s" repeatCount="indefinite"/>
+    </circle>
+
+    <circle cx="960" cy="500" r="240" fill="none" stroke="url(#portal-grad-2)" stroke-width="14" filter="url(#glow-heavy)">
+      <animate attributeName="opacity" values="0.6;1;0.4;0.9;0.6" dur="1.6s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="235;248;238;246;235" dur="1.6s" repeatCount="indefinite"/>
+    </circle>
+    
+    <!-- Swirling Vortex Rings (Rotating Animations) -->
+    <g filter="url(#glow-soft)">
+      <ellipse cx="960" cy="500" rx="220" ry="210" fill="none" stroke="#00f2fe" stroke-width="9" stroke-dasharray="40 20 80 15">
+        <animateTransform attributeName="transform" type="rotate" from="0 960 500" to="360 960 500" dur="6s" repeatCount="indefinite"/>
+      </ellipse>
+      <ellipse cx="960" cy="500" rx="215" ry="225" fill="none" stroke="#ff007f" stroke-width="9" stroke-dasharray="60 30 30 20">
+        <animateTransform attributeName="transform" type="rotate" from="360 960 500" to="0 960 500" dur="5s" repeatCount="indefinite"/>
+      </ellipse>
+      <ellipse cx="960" cy="500" rx="230" ry="200" fill="none" stroke="#ffab00" stroke-width="7" stroke-dasharray="100 40 20 40">
+        <animateTransform attributeName="transform" type="rotate" from="0 960 500" to="360 960 500" dur="9s" repeatCount="indefinite"/>
+      </ellipse>
+      <ellipse cx="960" cy="500" rx="205" ry="205" fill="none" stroke="#9b51e0" stroke-width="11" stroke-dasharray="50 25 70 15">
+        <animateTransform attributeName="transform" type="rotate" from="360 960 500" to="0 960 500" dur="8s" repeatCount="indefinite"/>
+      </ellipse>
+    </g>
+
+    <!-- Portal Interior Content (Clipped to Circle) -->
+    <g clip-path="url(#portal-clip)">
+      <!-- Dimension Sky inside Portal -->
+      <rect x="700" y="250" width="520" height="500" fill="#091936"/>
+      <circle cx="960" cy="450" r="180" fill="url(#portal-core)">
+        <animate attributeName="r" values="165;195;165" dur="2.5s" repeatCount="indefinite"/>
+      </circle>
+
+      <!-- Futuristic Cartoon Cityscape Inside Dimension -->
+      <g fill="#0c2548" stroke="#00f2fe" stroke-width="2">
+        <!-- Far Buildings -->
+        <rect x="780" y="420" width="35" height="150" rx="4"/>
+        <rect x="825" y="380" width="45" height="190" rx="4"/>
+        <rect x="880" y="440" width="30" height="130" rx="4"/>
+        <rect x="920" y="340" width="60" height="230" rx="6"/>
+        <rect x="990" y="400" width="40" height="170" rx="4"/>
+        <rect x="1040" y="370" width="50" height="200" rx="4"/>
+        <rect x="1100" y="430" width="35" height="140" rx="4"/>
+      </g>
+
+      <!-- Foreground City Silhouette & Neon Accents -->
+      <g fill="#061224">
+        <rect x="800" y="450" width="40" height="180"/>
+        <rect x="850" y="410" width="50" height="220"/>
+        <rect x="910" y="470" width="35" height="160"/>
+        <polygon points="960,320 940,370 980,370"/> <!-- Spire Center -->
+        <rect x="950" y="370" width="20" height="260"/>
+        <rect x="980" y="430" width="45" height="200"/>
+        <rect x="1035" y="460" width="40" height="170"/>
+      </g>
+
+      <!-- Windows & Neon Glowing Lights inside City (Blinking) -->
+      <g fill="#ffeb3b">
+        <rect x="860" y="430" width="6" height="8">
+          <animate attributeName="opacity" values="0.2;1;0.2" dur="1s" repeatCount="indefinite"/>
+        </rect>
+        <rect x="875" y="430" width="6" height="8"/>
+        <rect x="860" y="450" width="6" height="8"/>
+        <rect x="875" y="450" width="6" height="8">
+          <animate attributeName="opacity" values="1;0.2;1" dur="1.5s" repeatCount="indefinite"/>
+        </rect>
+        <rect x="957" y="390" width="6" height="12" fill="#00f2fe">
+          <animate attributeName="opacity" values="0.2;1;0.2" dur="0.7s" repeatCount="indefinite"/>
+        </rect>
+        <rect x="957" y="410" width="6" height="12" fill="#00f2fe"/>
+        <rect x="995" y="450" width="8" height="6" fill="#ff007f"/>
+        <rect x="1010" y="450" width="8" height="6" fill="#ff007f">
+          <animate attributeName="opacity" values="1;0.1;1" dur="1.3s" repeatCount="indefinite"/>
+        </rect>
+        <rect x="995" y="470" width="8" height="6" fill="#ff007f"/>
+        <rect x="1048" y="480" width="6" height="10"/>
+        <rect x="1060" y="480" width="6" height="10">
+          <animate attributeName="opacity" values="0.3;1;0.3" dur="1.8s" repeatCount="indefinite"/>
+        </rect>
+      </g>
+
+      <!-- Energy Beam Shooting Up Center of Portal -->
+      <polygon points="950,600 970,600 965,250 955,250" fill="#ffffff" opacity="0.8" filter="url(#glow-soft)">
+        <animate attributeName="opacity" values="0.4;1;0.4" dur="0.8s" repeatCount="indefinite"/>
+      </polygon>
+      <polygon points="940,600 980,600 970,250 950,250" fill="#00f2fe" opacity="0.5" filter="url(#glow-heavy)">
+        <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.2s" repeatCount="indefinite"/>
+      </polygon>
+    </g>
+
+    <!-- Portal Swirl Front Overlay Rings -->
+    <circle cx="960" cy="500" r="210" fill="none" stroke="#ffffff" stroke-width="7" stroke-dasharray="120 60 30 40" opacity="0.9" filter="url(#glow-soft)">
+      <animateTransform attributeName="transform" type="rotate" from="0 960 500" to="360 960 500" dur="4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="960" cy="500" r="190" fill="none" stroke="#00f2fe" stroke-width="5" stroke-dasharray="80 40 100 20" opacity="0.8">
+      <animateTransform attributeName="transform" type="rotate" from="360 960 500" to="0 960 500" dur="5s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- ================= ICON 1: GOOGLE DRIVE (TOP-LEFT) - Time Window: 0s - 2s ================= -->
+  <g id="icon-google-drive" transform="translate(450, 280)" filter="url(#badge-shadow)">
+    <!-- Base Card Frame -->
+    <rect x="-100" y="-100" width="200" height="200" rx="40" fill="#131b36" stroke="#4285F4" stroke-width="6"/>
+    <!-- Intense Glowing Border Overlay during active phase -->
+    <rect x="-100" y="-100" width="200" height="200" rx="40" fill="none" stroke="#00f2fe" stroke-width="12" filter="url(#glow-heavy)">
+      <animate attributeName="opacity" values="1;0;0;0;1" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- Content Brightness & Scale Pulse Group -->
+    <g>
+      <animate attributeName="opacity" values="1;0.25;0.25;0.25;1" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="scale" values="1.1;0.95;0.95;0.95;1.1" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+
+      <!-- Cartoon Google Drive Triangle Logo -->
+      <g transform="scale(1.2)">
+        <polygon points="-15,30 25,30 50,-15 10,-15" fill="#FFC107"/>
+        <polygon points="-50,-15 -25,30 25,30 -10,-15" fill="#0F9D58"/>
+        <polygon points="-50,-15 10,-15 35,-55 -25,-55" fill="#4285F4"/>
+      </g>
+
+      <!-- Floating Document Badges (Cartoon Style) -->
+      <g transform="translate(70, -50) rotate(15)">
+        <rect x="-20" y="-25" width="40" height="50" rx="6" fill="#ffffff" stroke="#4285F4" stroke-width="3"/>
+        <line x1="-10" y1="-10" x2="10" y2="-10" stroke="#4285F4" stroke-width="3" stroke-linecap="round"/>
+        <line x1="-10" y1="0" x2="5" y2="0" stroke="#4285F4" stroke-width="3" stroke-linecap="round"/>
+        <line x1="-10" y1="10" x2="8" y2="10" stroke="#4285F4" stroke-width="3" stroke-linecap="round"/>
+        <animateTransform attributeName="transform" type="translate" values="70,-50; 70,-58; 70,-50" dur="2s" repeatCount="indefinite"/>
+      </g>
+      
+      <!-- Badge Label -->
+      <text x="0" y="135" font-family="'Segoe UI', Roboto, sans-serif" font-weight="bold" font-size="22" fill="#ffffff" text-anchor="middle" letter-spacing="1">Google Drive</text>
+    </g>
+  </g>
+
+  <!-- ================= ICON 2: GOOGLE SHEETS (TOP-RIGHT) - Time Window: 2s - 4s ================= -->
+  <g id="icon-google-sheets" transform="translate(1470, 280)" filter="url(#badge-shadow)">
+    <!-- Base Card Frame -->
+    <rect x="-100" y="-100" width="200" height="200" rx="40" fill="#0d281e" stroke="#0F9D58" stroke-width="6"/>
+    <!-- Intense Glowing Border Overlay during active phase -->
+    <rect x="-100" y="-100" width="200" height="200" rx="40" fill="none" stroke="#57bb8a" stroke-width="12" filter="url(#glow-heavy)">
+      <animate attributeName="opacity" values="0;1;0;0;0" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- Content Brightness & Scale Pulse Group -->
+    <g>
+      <animate attributeName="opacity" values="0.25;1;0.25;0.25;0.25" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="scale" values="0.95;1.1;0.95;0.95;0.95" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+
+      <!-- Cartoon Google Sheets Icon -->
+      <g transform="scale(1.1)">
+        <rect x="-40" y="-55" width="80" height="110" rx="10" fill="#0F9D58"/>
+        <path d="M15,-55 L40,-30 L15,-30 Z" fill="#57bb8a"/>
+        <rect x="-28" y="-25" width="56" height="68" rx="5" fill="#ffffff"/>
+        <rect x="-22" y="-18" width="44" height="12" fill="#e8f5e9" rx="2"/>
+        <line x1="-22" y1="0" x2="22" y2="0" stroke="#0F9D58" stroke-width="3"/>
+        <line x1="-22" y1="14" x2="22" y2="14" stroke="#0F9D58" stroke-width="3"/>
+        <line x1="-22" y1="28" x2="22" y2="28" stroke="#0F9D58" stroke-width="3"/>
+        <line x1="-7" y1="-18" x2="-7" y2="36" stroke="#0F9D58" stroke-width="3"/>
+        <line x1="8" y1="-18" x2="8" y2="36" stroke="#0F9D58" stroke-width="3"/>
+      </g>
+
+      <!-- Floating Formula Cartoon Tag -->
+      <g transform="translate(-75, -45) rotate(-12)">
+        <rect x="-35" y="-18" width="70" height="36" rx="10" fill="#57bb8a" stroke="#ffffff" stroke-width="3"/>
+        <text x="0" y="6" font-family="'Courier New', monospace" font-weight="bold" font-size="18" fill="#ffffff" text-anchor="middle">=SUM()</text>
+        <animateTransform attributeName="transform" type="rotate" values="-12;-4;-12" dur="2s" repeatCount="indefinite"/>
+      </g>
+
+      <!-- Badge Label -->
+      <text x="0" y="135" font-family="'Segoe UI', Roboto, sans-serif" font-weight="bold" font-size="22" fill="#ffffff" text-anchor="middle" letter-spacing="1">Google Sheets</text>
+    </g>
+  </g>
+
+  <!-- ================= ICON 3: GOOGLE APPS SCRIPT / GAS (BOTTOM-RIGHT) - Time Window: 4s - 6s ================= -->
+  <g id="icon-google-gas" transform="translate(1470, 750)" filter="url(#badge-shadow)">
+    <!-- Base Card Frame -->
+    <rect x="-100" y="-100" width="200" height="200" rx="40" fill="#331800" stroke="#FF6D00" stroke-width="6"/>
+    <!-- Intense Glowing Border Overlay during active phase -->
+    <rect x="-100" y="-100" width="200" height="200" rx="40" fill="none" stroke="#ffab00" stroke-width="12" filter="url(#glow-heavy)">
+      <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- Content Brightness & Scale Pulse Group -->
+    <g>
+      <animate attributeName="opacity" values="0.25;0.25;1;0.25;0.25" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="scale" values="0.95;0.95;1.1;0.95;0.95" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+
+      <!-- Cartoon GAS Code Icon Badge -->
+      <circle cx="0" cy="-5" r="55" fill="#FF6D00"/>
+      <circle cx="0" cy="-5" r="45" fill="#ffab00"/>
+      
+      <!-- Code Brackets { / } -->
+      <text x="0" y="13" font-family="'Courier New', monospace" font-weight="900" font-size="52" fill="#ffffff" text-anchor="middle" letter-spacing="-2">{/}</text>
+
+      <!-- Code Snippet Bubble floating -->
+      <g transform="translate(75, 40) rotate(10)">
+        <rect x="-45" y="-20" width="90" height="40" rx="8" fill="#212121" stroke="#ffab00" stroke-width="3"/>
+        <text x="-35" y="-2" font-family="'Courier New', monospace" font-size="11" fill="#00e676">function()</text>
+        <text x="-35" y="12" font-family="'Courier New', monospace" font-size="11" fill="#ff4081">  runGAS();</text>
+        <animateTransform attributeName="transform" type="translate" values="75,40; 75,32; 75,40" dur="2.2s" repeatCount="indefinite"/>
+      </g>
+
+      <!-- Badge Label -->
+      <text x="0" y="135" font-family="'Segoe UI', Roboto, sans-serif" font-weight="bold" font-size="22" fill="#ffffff" text-anchor="middle" letter-spacing="1">Google Apps Script</text>
+    </g>
+  </g>
+
+  <!-- ================= ICON 4: GOOGLE ECOSYSTEM (BOTTOM-LEFT) - Time Window: 6s - 8s ================= -->
+  <g id="icon-google-ecosystem" transform="translate(450, 750)" filter="url(#badge-shadow)">
+    <!-- Base Card Frame -->
+    <rect x="-100" y="-100" width="200" height="200" rx="40" fill="#2a0826" stroke="#EA4335" stroke-width="6"/>
+    <!-- Intense Glowing Border Overlay during active phase -->
+    <rect x="-100" y="-100" width="200" height="200" rx="40" fill="none" stroke="#FBBC05" stroke-width="12" filter="url(#glow-heavy)">
+      <animate attributeName="opacity" values="0;0;0;1;0" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- Content Brightness & Scale Pulse Group -->
+    <g>
+      <animate attributeName="opacity" values="0.25;0.25;0.25;1;0.25" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="scale" values="0.95;0.95;0.95;1.1;0.95" keyTimes="0;0.25;0.5;0.75;1" dur="8s" repeatCount="indefinite"/>
+
+      <!-- Geometric Constellation Network surrounding Google G -->
+      <g fill="none" stroke="#FBBC05" stroke-width="3" opacity="0.8">
+        <polygon points="0,-65 55,-30 55,35 0,65 -55,35 -55,-30"/>
+        <line x1="0" y1="-65" x2="0" y2="65"/>
+        <line x1="-55" y1="-30" x2="55" y2="35"/>
+        <line x1="-55" y1="35" x2="55" y2="-30"/>
+        <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="15s" repeatCount="indefinite"/>
+      </g>
+      <!-- Constellation Nodes -->
+      <circle cx="0" cy="-65" r="6" fill="#4285F4"/>
+      <circle cx="55" cy="-30" r="6" fill="#EA4335"/>
+      <circle cx="55" cy="35" r="6" fill="#FBBC05"/>
+      <circle cx="0" cy="65" r="6" fill="#34A853"/>
+      <circle cx="-55" cy="35" r="6" fill="#4285F4"/>
+      <circle cx="-55" cy="-30" r="6" fill="#EA4335"/>
+
+      <!-- Cartoon Google 'G' Logo Center -->
+      <g transform="scale(1.1) translate(0, 2)">
+        <path d="M 0,-30 A 30 30 0 0 1 28,-10 L 14,-2 A 15 15 0 0 0 0 -15 Z" fill="#4285F4"/>
+        <path d="M 0,-30 A 30 30 0 0 0 -28,-10 L -14,-2 A 15 15 0 0 1 0 -15 Z" fill="#EA4335"/>
+        <path d="M -28,-10 A 30 30 0 0 0 0,30 L 0,15 A 15 15 0 0 1 -14,-2 Z" fill="#FBBC05"/>
+        <path d="M 0,30 A 30 30 0 0 0 28,10 L 0,10 L 0,-2 L 28,-2 A 30 30 0 0 1 28,10 L 14,3 A 15 15 0 0 1 0,15 Z" fill="#34A853"/>
+        <path d="M 24,-4 C 25,2 24,8 21,13 C 17,20 9,24 0,24 C -13,24 -24,13 -24,0 C -24,-13 -13,-24 0,-24 C 6,-24 12,-22 17,-17 L 10,-10 C 7,-13 4,-14 0,-14 C -8,-14 -14,-8 -14,0 C -14,8 -8,14 0,14 C 5,14 9,12 11,9 L 0,9 L 0,0 L 24,0 Z" fill="#ffffff"/>
+      </g>
+
+      <!-- Badge Label -->
+      <text x="0" y="135" font-family="'Segoe UI', Roboto, sans-serif" font-weight="bold" font-size="22" fill="#ffffff" text-anchor="middle" letter-spacing="1">Google Ecosystem</text>
+    </g>
+  </g>
+
+  <!-- Title Text Banner at Top Center -->
+  <g transform="translate(960, 80)">
+    <text x="0" y="0" font-family="'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="36" fill="#ffffff" text-anchor="middle" letter-spacing="4" filter="url(#glow-heavy)">
+      GOOGLE WORKSPACE PORTAL
+      <animate attributeName="opacity" values="0.7;1;0.7" dur="2s" repeatCount="indefinite"/>
+    </text>
+    <text x="0" y="0" font-family="'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="36" fill="#00f2fe" text-anchor="middle" letter-spacing="4">
+      GOOGLE WORKSPACE PORTAL
+      <animate attributeName="opacity" values="0.5;0.9;0.5" dur="1.5s" repeatCount="indefinite"/>
+    </text>
+  </g>
+</svg>
