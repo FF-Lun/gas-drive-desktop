@@ -2319,7 +2319,7 @@
 
     function openIconPicker(item) {
       iconPickerTargetId = item.id;
-      document.getElementById('iconUrlInput').value = '';
+      document.getElementById('iconUrlInput').value = item.iconOverride || '';
       const presets = document.getElementById('iconPresets');
       presets.innerHTML = '';
       ICON_PRESETS.forEach(dataUrl => {
