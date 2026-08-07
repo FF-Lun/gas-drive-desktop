@@ -1,3 +1,4 @@
+<!-- Personal Cloud Desktop — front-end (paired with Code.gs): renders the desktop icon grid, sidebar dock, wallpaper/music, and drag-and-drop, all driven by google.script.run calls to the GAS backend. -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -532,6 +533,7 @@
     let wallpaperSlideshowTimer = null;
     let wallpaperPlaylist = null;
     let wallpaperPlaylistIndex = 0;
+    let currentBackgroundValue = ''; // raw stored value (URL, gradient, or JSON playlist array) — used to prefill the wallpaper textarea
 
     function setBackgroundValue(v) {
       document.body.style.backgroundImage = /^(linear|radial)-gradient\(/.test(v) ? v : "url('" + v + "')";
@@ -544,6 +546,7 @@
     }
 
     function applyBackground(value) {
+      currentBackgroundValue = value || '';
       if (wallpaperSlideshowTimer) { clearInterval(wallpaperSlideshowTimer); wallpaperSlideshowTimer = null; }
       wallpaperPlaylist = null;
       const v = value || DEFAULT_BG;
@@ -614,6 +617,20 @@
     }
 
     let musicPlaying = false;
+    let currentMusicValue = ''; // raw stored value (URL or JSON playlist array) — used to prefill the music textarea
+
+    // Both wallpaper and music store either a single URL, a JSON array of
+    // URLs (playlist/slideshow), or (wallpaper only) a CSS gradient string.
+    // This turns that stored form back into what the textarea should show:
+    // one URL per line, or the raw string as-is for a single URL/gradient.
+    function storedValueToTextareaText(raw) {
+      if (!raw) return '';
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.join('\n');
+      } catch (e) { /* not JSON — a single URL or gradient string, used as-is */ }
+      return raw;
+    }
 
     let musicPlaylist = null;
     let musicPlaylistIndex = 0;
@@ -708,6 +725,7 @@
     }
 
     function setupMusic(value, volume) {
+      currentMusicValue = value || '';
       const container = document.getElementById('musicPlayerContainer');
       const volContainer = document.getElementById('volumeContainer');
       const range = document.getElementById('volumeRange');
@@ -1947,6 +1965,7 @@
 
     function openWallpaperModal() {
       document.getElementById('wallpaperModal').style.display = 'block';
+      document.getElementById('wallpaperUrlInput').value = storedValueToTextareaText(currentBackgroundValue);
       const presets = document.getElementById('wallpaperPresets');
       presets.innerHTML = '';
       WALLPAPER_PRESETS.forEach(p => {
@@ -2013,6 +2032,7 @@
     // ---- Background music ----
     function openMusicModal() {
       document.getElementById('musicModal').style.display = 'block';
+      document.getElementById('musicUrlInput').value = storedValueToTextareaText(currentMusicValue);
     }
     function closeMusicModal() { document.getElementById('musicModal').style.display = 'none'; }
 
