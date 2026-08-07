@@ -1,0 +1,2330 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0; height: 100vh; width: 100vw;
+      background: #1e1e2e no-repeat center/cover;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden; user-select: none;
+    }
+    #desktop {
+      width: 100vw; height: calc(100vh - 36px);
+      position: absolute; top: 36px; left: 0;
+      touch-action: pan-y; user-select: none; -webkit-user-select: none;
+      overflow: auto;
+    }
+    .icon {
+      width: 88px; padding: 10px; text-align: center; color: white;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.8); cursor: pointer;
+      position: absolute; border-radius: 10px; touch-action: none;
+    }
+    .icon:hover { background: rgba(255,255,255,0.18); }
+    .icon.drop-target { outline: 2px solid white; background: rgba(255,255,255,0.15); }
+
+    #desktop.mobile-mode {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      justify-items: center; align-content: start;
+      gap: 16px 4px; padding: 16px 16px 16px 30px; box-sizing: border-box;
+    }
+    #desktop.mobile-mode .icon {
+      position: static; left: auto !important; top: auto !important; transform: none !important;
+    }
+    @media (max-width: 768px) and (min-width: 481px) {
+      #desktop.mobile-mode { grid-template-columns: repeat(4, 1fr); }
+    }
+    @media (max-width: 768px) and (min-width: 601px) {
+      #desktop.mobile-mode { grid-template-columns: repeat(5, 1fr); }
+    }
+
+    /* App sidebar — a permanent dock of personal-service icons (Gmail,
+       custom links, etc.), separate from #desktop so the file/folder grid
+       keeps working underneath it, just shifted over by however wide the
+       sidebar currently is. Always present, in one of three widths. */
+    #appSidebar {
+      display: flex; flex-direction: column; align-items: stretch;
+      height: 100vh; position: fixed; top: 0; left: 0;
+      padding: 16px 6px 10px; gap: 2px; background: rgba(15,15,25,0.82);
+      overflow-y: auto; overflow-x: visible;
+      z-index: 1000; transition: width 0.15s ease;
+    }
+    #appSidebar.state-peek { width: 22px; padding: 10px 2px; overflow-y: hidden; overflow-x: visible; }
+    #appSidebar.state-icons { width: 60px; }
+    #appSidebar.state-full { width: 220px; }
+    #sidebarIconGrid { display: flex; flex-direction: column; gap: 2px; }
+    #appSidebar .icon {
+      display: flex;
+      position: static !important; width: auto; flex-direction: row; align-items: center;
+      justify-content: flex-start; gap: 10px; padding: 8px 10px; text-align: left;
+      margin-right: 22px;
+    }
+    /* "Full" state: a centered, wrapping grid of tiles (icon on top, label
+       below) instead of one wide row per link — widening the sidebar should
+       actually fit more at a glance, not just print a longer label. */
+    #appSidebar.state-full #sidebarIconGrid {
+      flex-direction: row; flex-wrap: wrap; justify-content: center;
+      gap: 14px 10px; padding: 4px;
+    }
+    #appSidebar.state-full .icon, #appSidebar.state-full .addLinkBtn {
+      flex-direction: column; justify-content: center; align-items: center;
+      width: 72px; margin-right: 0; gap: 4px; padding: 6px; text-align: center;
+      border-top: none; margin-top: 0; padding-top: 6px;
+    }
+    #appSidebar.state-full .icon span, #appSidebar.state-full .addLinkBtn span {
+      white-space: normal; overflow: visible; text-overflow: clip;
+      font-size: 11px; line-height: 1.2;
+    }
+    #appSidebar .icon img { width: 40px; height: 40px; margin: 0; flex-shrink: 0; }
+    #appSidebar .icon span { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #appSidebar.state-peek .icon, #appSidebar.state-icons .icon {
+      justify-content: center; padding: 8px; margin-right: 0; width: 100%; box-sizing: border-box;
+    }
+    #appSidebar.state-icons .addLinkBtn { margin-right: 0; width: 100%; box-sizing: border-box; }
+    #appSidebar.state-peek .icon span, #appSidebar.state-icons .icon span,
+    #appSidebar.state-peek .icon, #appSidebar.state-peek .addLinkBtn { display: none; }
+    #sidebarStateBtn {
+      position: fixed; top: 50%; transform: translateY(-50%);
+      cursor: pointer; color: white; opacity: 0.9;
+      width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+      font-size: 16px; background: rgba(40,40,60,0.95); border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4); z-index: 1001;
+      transition: left 0.15s ease;
+    }
+    .addLinkBtn {
+      display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+      cursor: pointer; color: white; opacity: 0.8; border-top: 1px dashed rgba(255,255,255,0.2);
+      margin-top: 4px; padding-top: 10px; margin-right: 22px;
+    }
+    .addLinkBtn img { width: 40px; height: 40px; margin: 0; flex-shrink: 0; -webkit-user-drag: none; }
+    .addLinkBtn span { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #appSidebar.state-icons .addLinkBtn { justify-content: center; padding: 8px; }
+    #appSidebar.state-icons .addLinkBtn span { display: none; }
+    #appSidebar.state-icons, #appSidebar.state-full {
+      box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+    }
+    /* Same behavior on every screen size now: reserve just the thin peek
+       width permanently; "icons"/"full" always overlay on top of that
+       instead of pushing content further over. */
+    #desktop.with-sidebar { left: 22px; width: calc(100vw - 22px); }
+    #drawerBackdrop { display: none; }
+    #drawerBackdrop.show {
+      display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 480;
+    }
+
+    .icon { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+    #desktop { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+    .icon img, .icon span { pointer-events: none; cursor: pointer; }
+    .icon img { width: 48px; height: 48px; display: block; border-radius: 8px; -webkit-user-drag: none; user-drag: none; }
+    .icon-imgwrap { position: relative; display: block; width: 48px; margin: 0 auto 6px; }
+    .shortcut-badge {
+      position: absolute; bottom: -2px; right: -2px; width: 15px; height: 15px;
+      background: rgba(0,0,0,0.65); border-radius: 50%; display: flex;
+      align-items: center; justify-content: center; font-size: 9px; color: white;
+      pointer-events: none;
+    }
+    .icon span { font-size: 12px; word-break: break-word; }
+    .icon.app-link { outline: 1px dashed rgba(255,255,255,0.35); }
+
+    #topbar {
+      position: absolute; top: 0; left: 0; right: 0; height: 36px;
+      background: rgba(0,0,0,0.35); display: flex; align-items: center;
+      padding: 0 12px; gap: 16px; color: white; font-size: 13px; z-index: 999;
+      transition: left 0.15s ease;
+    }
+    #topbar.with-sidebar { left: 22px; }
+    #folderBar {
+      display: none; position: fixed; top: 36px; left: 0; right: 0; height: 32px;
+      background: rgba(0,0,0,0.25); align-items: center; gap: 10px;
+      padding: 0 12px; color: white; font-size: 12px; z-index: 900;
+      transition: left 0.15s ease;
+    }
+    #folderBar.show { display: flex; }
+    #folderBar.with-sidebar { left: 22px; }
+    #upBtn { cursor: pointer; opacity: 0.85; flex-shrink: 0; }
+    #folderBreadcrumbTrail { display: flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; }
+    .crumb { cursor: pointer; opacity: 0.75; }
+    .crumb:hover { opacity: 1; text-decoration: underline; }
+    .crumb.current { cursor: default; opacity: 1; font-weight: bold; }
+    .crumb.current:hover { text-decoration: none; }
+    .crumb-sep { opacity: 0.4; }
+    #desktop.folder-bar-visible { top: 68px; height: calc(100vh - 68px); }
+    #desktopSelect { color: white; border: none; }
+    #desktopSelect option { color: #222; background: white; }
+    #topbar span { cursor: pointer; }
+    #topbarPills { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    #topbarPills.icon-only .pill-text { display: none; }
+    #topbarPills.icon-only span.pill { padding: 4px 10px; }
+    .pill {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      background: rgba(255,255,255,0.08); border-radius: 16px;
+      padding: 4px 12px; height: 26px; box-sizing: border-box; white-space: nowrap;
+    }
+    .pill select {
+      background: transparent; color: white; border: none; font-size: 13px;
+      padding: 0; height: 100%; cursor: pointer;
+    }
+    .pill select option { color: #222; background: white; }
+    .hint-desktop-only { opacity: 0.7; }
+    #volumeContainer {
+      display: flex; align-items: stretch; gap: 6px; position: relative;
+      margin-top: 8px; box-sizing: border-box; max-width: 200px;
+    }
+    #radioCircles {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 4px; flex-shrink: 0; position: relative;
+    }
+    #radioPills { display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; min-width: 0; }
+    .radio-circle {
+      width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+      background: rgba(255,255,255,0.18); display: flex; align-items: center;
+      justify-content: center; font-size: 10px; color: white; cursor: pointer;
+    }
+    .radio-circle:hover { background: rgba(255,255,255,0.3); }
+    #volumeSliderPopup {
+      display: none; position: absolute; bottom: 30px; left: -6px;
+      background: rgba(20,20,28,0.9); border-radius: 8px; padding: 8px 6px;
+    }
+    #volumeSliderPopup.show { display: block; }
+    #volumeRange { width: 60px; height: 4px; accent-color: #ff7675; cursor: pointer; }
+    #nowPlayingPill, #nowWallpaperPill {
+      display: flex; align-items: center; min-width: 0;
+      background: rgba(0,0,0,0.4); border-radius: 12px; padding: 2px 8px; cursor: pointer;
+    }
+    .marquee-wrap { overflow: hidden; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
+    .marquee-text {
+      display: inline-block; padding-left: 100%; animation: marquee 9s linear infinite;
+      font-family: 'Courier New', monospace; font-size: 10px; color: #ffcf6b;
+      text-shadow: 0 0 4px rgba(255,207,107,0.6);
+    }
+    #playlistPickerPopup, #wallpaperPickerPopup {
+      display: none; position: fixed; width: 200px;
+      max-height: 200px; overflow-y: auto; background: #2b2d42; color: white;
+      border-radius: 8px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 2000;
+    }
+    .picker-row {
+      display: flex; align-items: flex-start; gap: 4px; padding: 6px 8px;
+      cursor: pointer; border-radius: 6px; white-space: normal; word-break: break-all;
+    }
+    .picker-row:hover { background: rgba(255,255,255,0.1); }
+    .picker-indicator { flex-shrink: 0; font-size: 10px; margin-top: 2px; width: 10px; text-align: center; }
+    .picker-name { flex: 1 1 auto; font-size: 13px; line-height: 1.4; }
+    .tree-item { padding: 6px 8px; cursor: pointer; border-radius: 6px; }
+    .tree-item:hover { background: rgba(255,255,255,0.1); }
+    .tree-item.selected { background: rgba(255,255,255,0.2); font-weight: bold; }
+    #clockColorPicker {
+      display: none; position: fixed; background: #2b2d42; border-radius: 10px;
+      padding: 10px; z-index: 2000; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+    .color-swatch { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; display: inline-block; margin: 3px; }
+    .color-swatch:hover { border-color: white; }
+    @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
+
+    #clockWidget {
+      position: absolute; top: 50px; right: 24px; padding: 14px 20px;
+      background: rgba(20,20,28,0.65); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border: 1.5px solid rgba(255,255,255,0.55); border-radius: 18px; color: white;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.5); cursor: pointer; z-index: 10;
+      display: flex; flex-direction: column; align-items: center;
+      transition: transform 0.2s ease, background 0.2s ease;
+      box-shadow:
+        0 8px 32px rgba(0,0,0,0.45),
+        0 1.5px 0 rgba(255,255,255,0.18) inset,
+        0 -1.5px 0 rgba(0,0,0,0.3) inset;
+    }
+    #clockWidget:hover { background: rgba(30,30,44,0.72); transform: scale(1.02); }
+    #clockTime { font-size: 40px; font-weight: 300; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; }
+    #clockDate { font-size: 13px; margin-top: 6px; opacity: 0.85; text-align: center; }
+
+    #miniCalendarModal {
+      display: none; position: absolute; top: 155px; right: 24px; width: 260px;
+      background: #2b2d42; color: white; border-radius: 12px; padding: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 1000;
+    }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; font-size: 12px; margin-top: 8px; }
+    .cal-day-header { font-weight: bold; opacity: 0.6; padding-bottom: 4px; }
+    .cal-day { padding: 6px 0; border-radius: 4px; }
+    .cal-day.today { background: #ff7675; font-weight: bold; color: white; }
+    .cal-nav-btn { cursor: pointer; padding: 2px 8px; border-radius: 6px; opacity: 0.8; }
+    .cal-nav-btn:hover { background: rgba(255,255,255,0.15); opacity: 1; }
+    .cal-today-btn { cursor: pointer; font-size: 11px; opacity: 0.7; text-decoration: underline; }
+    .cal-today-btn:hover { opacity: 1; }
+
+    @media (max-width: 768px) {
+      /* Stack everything in normal document flow instead of absolute-positioned
+         overlays — the topbar can wrap to 2 lines, the clock bar takes whatever
+         height it needs, and the icon grid just gets pushed down by however
+         much space those actually use. No more overlap regardless of content. */
+      body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+      #appSidebar .icon img, .addLinkBtn img { width: 36px; height: 36px; }
+      #volumeSliderPopup {
+        bottom: auto; top: 30px; left: -6px; padding: 6px 8px;
+      }
+      #volumeSliderPopup #volumeRange { width: 80px; }
+      #topbar { position: static; height: auto; min-height: 36px; flex-wrap: wrap; flex-shrink: 0; order: 0; padding-left: 30px; }
+      .hint-desktop-only { display: none; }
+      #musicPlayerContainer { order: 1; }
+      #clockWidget {
+        position: static; width: 100%; box-sizing: border-box; border-radius: 0;
+        flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px;
+        padding: 8px 16px 8px 30px; order: 2; flex-shrink: 0;
+      }
+      #clockWidget:hover { transform: none; }
+      #clockTime { font-size: 22px; text-align: left; }
+      #clockDate { font-size: 11px; margin-top: 0; text-align: left; }
+      #volumeContainer { margin-top: 0; max-width: none; flex: 1 1 auto; min-width: 0; }
+      .marquee-wrap { width: auto; flex: 1 1 auto; min-width: 0; }
+      #folderBar {
+        position: static; height: auto; padding: 6px 16px 6px 30px; order: 3; flex-shrink: 0;
+        background: rgba(0,0,0,0.25);
+      }
+      #desktop { position: static; width: 100%; height: auto; flex: 1 1 auto; overflow-y: auto; top: auto; order: 4; padding-left: 30px; box-sizing: border-box; }
+      #desktop.with-sidebar { width: 100%; left: 0; } /* the desktop-tier rule reserving 22px of width leaks in via higher specificity otherwise */
+
+      /* Every small dialog (settings panels, the Drive music/photo/video
+         lists, etc.) was a fixed 380–420px wide — wider than some phones'
+         entire screen. Cap to the viewport with a margin instead. */
+      #folderModal, #spotlightModal, #appLinkModal, #wallpaperModal,
+      #iconPickerModal, #musicModal, #driveMusicModal, #drivePhotoModal,
+      #driveVideoModal {
+        width: 90vw; max-width: 400px;
+      }
+    }
+
+    #folderModal, #spotlightModal {
+      display: none; position: absolute; top: 15%; left: 50%; transform: translateX(-50%);
+      width: 420px; max-height: 60vh; background: #2b2d42; color: white;
+      border-radius: 10px; padding: 16px; z-index: 1000; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+      display: none; flex-direction: column;
+    }
+    #folderModal.open, #spotlightModal.open { display: flex; }
+    #folderTree { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+    #spotlightResults { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+    .modal-actions { flex-shrink: 0; margin-top: 12px; text-align: right; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; }
+    .modal-actions button { margin-left: 8px; }
+    #spotlightInput { width: 100%; padding: 8px; border-radius: 6px; border: none; margin-bottom: 8px; }
+
+    #contextMenu {
+      display: none; position: fixed; background: #2b2d42; color: white;
+      border-radius: 8px; padding: 6px; z-index: 1200; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      min-width: 180px;
+    }
+    .ctx-item { padding: 8px 12px; cursor: pointer; border-radius: 6px; font-size: 13px; }
+    .ctx-item:hover { background: rgba(255,255,255,0.12); }
+    .ctx-sep { height: 1px; background: rgba(255,255,255,0.15); margin: 4px 0; }
+
+    #geminiConfirmModal {
+      display: none; position: fixed; top: 20%; left: 50%; transform: translateX(-50%);
+      width: 460px; max-width: 92vw; background: #2b2d42; color: white; border-radius: 12px;
+      padding: 24px; z-index: 2000; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+    #geminiConfirmModal.open { display: block; }
+    #geminiConfirmModal h4 { font-size: 18px; margin: 0 0 14px; }
+    #geminiConfirmText { font-size: 15px; line-height: 1.7; opacity: 0.92; margin: 0 0 20px; }
+    #geminiConfirmModal .modal-actions { border-top: none; padding-top: 0; margin-top: 0; }
+    #geminiConfirmModal .modal-actions button { padding: 8px 16px; font-size: 14px; border-radius: 6px; }
+
+    #appLinkModal {
+      display: none; position: absolute; top: 20%; left: 50%; transform: translateX(-50%);
+      width: 380px; background: #2b2d42; color: white; border-radius: 10px; padding: 16px;
+      z-index: 1000; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+    .applink-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 13px; }
+    .applink-row button { margin-left: 6px; }
+    #appLinkModal input { padding: 6px; border-radius: 4px; border: none; margin-right: 4px; }
+
+    #wallpaperModal, #iconPickerModal, #musicModal, #driveMusicModal, #drivePhotoModal, #driveVideoModal {
+      display: none; position: fixed; top: 20%; left: 50%; transform: translateX(-50%);
+      width: 380px; background: #2b2d42; color: white; border-radius: 10px; padding: 16px;
+      z-index: 2000; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+    #driveMusicModal, #drivePhotoModal, #driveVideoModal { max-height: 70vh; overflow-y: auto; }
+    #wallpaperModal input, #iconPickerModal input, #musicModal input,
+    #wallpaperModal textarea, #musicModal textarea {
+      width: 100%; padding: 6px; border-radius: 4px; border: none; margin: 8px 0;
+      font-family: inherit; font-size: 13px; resize: vertical;
+    }
+    .modal-hint { font-size: 11px; opacity: 0.75; line-height: 1.5; margin: 8px 0 0; }
+    .wp-presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+    .wp-presets .swatch { width: 72px; height: 48px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; }
+    .wp-presets .swatch:hover { border-color: white; }
+    .icon-presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+    .icon-presets img { width: 44px; height: 44px; border-radius: 8px; cursor: pointer; border: 2px solid transparent; background: rgba(255,255,255,0.08); }
+    .icon-presets img:hover { border-color: white; }
+  </style>
+</head>
+<body ondrop="handleDrop(event)" ondragover="event.preventDefault()">
+  <div id="topbar">
+    <div id="topbarPills">
+      <div class="pill" id="desktopPill"><select id="desktopSelect" onchange="onDesktopSwitch(this.value)"></select></div>
+      <span class="pill" onclick="openSpotlight()">🔍<span class="pill-text"> 搜尋<span class="hint-desktop-only"> (Ctrl+Space)</span></span></span>
+      <span class="pill" onclick="createDesktopPrompt()">＋<span class="pill-text"> 新桌面</span></span>
+      <span class="pill" onclick="joinSharedDesktopPrompt()">🔗<span class="pill-text"> 加入分享桌面</span></span>
+    </div>
+  </div>
+  <div id="musicPlayerContainer" style="display:none;"></div>
+  <div id="drawerBackdrop" onclick="cycleSidebarState('peek')"></div>
+  <div id="appSidebar">
+    <div id="sidebarIconGrid"></div>
+  </div>
+  <span id="sidebarStateBtn" onclick="cycleSidebarState()">◀</span>
+  <div id="folderBar">
+    <span id="upBtn" onclick="goUpFolder()">⬆ 上一層</span>
+    <span id="folderBreadcrumbTrail"></span>
+  </div>
+  <div id="desktop"></div>
+
+  <div id="clockWidget" onclick="event.stopPropagation(); toggleMiniCalendar()">
+    <div id="clockTime">00:00</div>
+    <div id="clockDate"></div>
+    <div id="volumeContainer" style="display:none;" onclick="event.stopPropagation()">
+      <div id="radioCircles">
+        <div id="volumeToggleBtn" class="radio-circle" onclick="toggleVolumeSlider(event)">▲</div>
+        <div id="volumeSliderPopup">
+          <input type="range" id="volumeRange" min="0" max="1" step="0.05" value="0.5" oninput="changeVolume(this.value)" onchange="hideVolumeSlider()" title="音量">
+        </div>
+        <div id="playToggleBtn" class="radio-circle" onclick="toggleMusic(event)">▶</div>
+      </div>
+      <div id="radioPills">
+        <div id="nowPlayingPill" onclick="openPlaylistPicker(event)">
+          <div class="marquee-wrap"><span id="nowPlayingText" class="marquee-text"></span></div>
+        </div>
+        <div id="nowWallpaperPill" onclick="openWallpaperPicker(event)">
+          <div class="marquee-wrap"><span id="nowWallpaperText" class="marquee-text"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="playlistPickerPopup" onclick="event.stopPropagation()"></div>
+  <div id="wallpaperPickerPopup" onclick="event.stopPropagation()"></div>
+  <div id="clockColorPicker">
+    <div id="clockColorSwatches"></div>
+  </div>
+  <div id="miniCalendarModal" onclick="event.stopPropagation()">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+      <span class="cal-nav-btn" onclick="calendarShiftMonth(-1)">◀</span>
+      <span id="calMonthTitle" style="text-align:center; font-weight:bold; font-size:14px;"></span>
+      <span class="cal-nav-btn" onclick="calendarShiftMonth(1)">▶</span>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div style="text-align:center; margin-top:6px;">
+      <span id="calTodayBtn" class="cal-today-btn" onclick="calendarGoToday()">回到今天</span>
+    </div>
+  </div>
+
+  <div id="folderModal">
+    <div id="folderTree"></div>
+    <div class="modal-actions">
+      <button onclick="closeFolderModal()">取消</button>
+      <button onclick="confirmFolderTarget()">選這裡</button>
+    </div>
+  </div>
+
+  <div id="spotlightModal">
+    <input id="spotlightInput" oninput="doSearch(this.value)" placeholder="搜尋雲端硬碟...">
+    <div id="spotlightResults"></div>
+    <div class="modal-actions"><button onclick="closeSpotlight()">關閉</button></div>
+  </div>
+
+  <div id="contextMenu"></div>
+
+  <div id="geminiConfirmModal">
+    <h4 style="margin:0 0 10px;">✨ 問 Gemini</h4>
+    <p id="geminiConfirmText" style="margin:0;"></p>
+    <div class="modal-actions">
+      <button onclick="closeGeminiConfirmModal()">取消</button>
+      <button onclick="confirmAskInGemini()">確定，前往 Gemini</button>
+    </div>
+  </div>
+
+  <div id="appLinkModal">
+    <h4 style="margin:0 0 10px;">個人服務 icon</h4>
+    <div id="appLinkList"></div>
+    <p class="modal-hint">快速加入(圖示已對應好)：</p>
+    <div class="icon-presets" id="appLinkQuickAdd"></div>
+    <div style="margin-top:10px;">
+      <input id="newAppName" placeholder="名稱" style="width:70px;">
+      <input id="newAppUrl" placeholder="網址 (https://...)" style="width:150px;">
+      <button onclick="addAppLinkEntry()">加入</button>
+    </div>
+    <div class="modal-actions"><button onclick="closeAppLinkModal()">關閉</button></div>
+  </div>
+
+  <div id="wallpaperModal">
+    <h4 style="margin:0 0 10px;">桌布設定</h4>
+    <button onclick="window.open('https://www.google.com/search?tbm=isch&q=wallpaper', '_blank')">開啟 Google 圖片搜尋</button>
+    <p class="modal-hint">請貼「圖片本身」的網址（通常以 .jpg / .png / .webp 結尾），不是打開圖片的網頁連結。在圖片搜尋結果上對圖片按右鍵選「複製圖片位址」，貼過來的才是正確網址；貼錯會顯示不出來。建議挑寬螢幕比例（16:9）的圖，套用起來比較不會被裁切怪異。貼多行（一行一個網址）會自動輪播，每 5 分鐘換一張。（Google 雲端硬碟的分享連結目前無法直接使用。）</p>
+    <textarea id="wallpaperUrlInput" rows="3" placeholder="貼上圖片網址 (https://...)&#10;貼多行、一行一個網址，會自動輪播"></textarea>
+    <div class="wp-presets" id="wallpaperPresets"></div>
+    <div class="modal-actions">
+      <button onclick="closeWallpaperModal()">取消</button>
+      <button onclick="applyWallpaperFromInput()">套用</button>
+    </div>
+  </div>
+
+  <div id="iconPickerModal">
+    <h4 style="margin:0 0 10px;">更換圖示</h4>
+    <button onclick="window.open('https://www.google.com/search?tbm=isch&q=icon', '_blank')">開啟 Google 圖片搜尋</button>
+    <p class="modal-hint">請貼「圖片本身」的網址（通常以 .jpg / .png / .webp 結尾），不是打開圖片的網頁連結——對圖片按右鍵選「複製圖片位址」才會拿到正確網址。建議挑接近正方形、背景乾淨或透明的圖，縮成小圖示時比較清楚。</p>
+    <input id="iconUrlInput" placeholder="貼上圖片網址 (https://...)">
+    <div class="icon-presets" id="iconPresets"></div>
+    <div class="modal-actions">
+      <button onclick="closeIconPicker()">取消</button>
+      <button onclick="applyIconFromInput()">套用</button>
+    </div>
+  </div>
+
+  <div id="musicModal">
+    <h4 style="margin:0 0 10px;">背景音樂設定</h4>
+    <p class="modal-hint">請貼「音檔本身」的直接網址（通常以 .mp3 / .ogg / .wav 結尾），不是網頁連結。瀏覽器會擋自動播放有聲音的內容，所以套用後要自己按桌面上的「▶️ 音樂」才會開始播放。貼多行（一行一個網址）會變成播放清單，一首放完接下一首，循環播放。（Google 雲端硬碟的分享連結目前無法直接使用；YouTube 連結也還不支援。）</p>
+    <textarea id="musicUrlInput" rows="3" placeholder="貼上音檔網址 (https://...mp3)&#10;貼多行、一行一個網址，會變成播放清單"></textarea>
+    <div class="modal-actions">
+      <button onclick="clearMusic()">清除</button>
+      <button onclick="closeMusicModal()">取消</button>
+      <button onclick="applyMusicFromInput()">套用</button>
+    </div>
+  </div>
+
+  <div id="driveMusicModal">
+    <h4 style="margin:0 0 10px;">雲端硬碟音樂播放器</h4>
+    <p class="modal-hint">列出目前這個資料夾裡的音檔。點一首會在一個小視窗裡用 Drive 自己的播放器打開——放完要手動點下一首，不會自動接歌（跨視窗沒辦法互相通知）。這個小視窗可以用 Chrome 的分割視窗功能跟桌面並排。</p>
+    <div id="driveMusicList"></div>
+    <div class="modal-actions"><button onclick="closeDriveMusicModal()">關閉</button></div>
+  </div>
+
+  <div id="drivePhotoModal">
+    <h4 style="margin:0 0 10px;">雲端硬碟相片瀏覽器</h4>
+    <p class="modal-hint">列出目前這個資料夾裡的圖片。點一張會用 Drive 自己的檢視器打開，同一個小視窗會重複利用，點下一張直接換圖。</p>
+    <div id="drivePhotoList"></div>
+    <div class="modal-actions"><button onclick="closeDrivePhotoModal()">關閉</button></div>
+  </div>
+
+  <div id="driveVideoModal">
+    <h4 style="margin:0 0 10px;">雲端硬碟影片播放器</h4>
+    <p class="modal-hint">列出目前這個資料夾裡的影片。點一部會用 Drive 自己的播放器打開，同一個小視窗會重複利用，放完要手動點下一部。</p>
+    <div id="driveVideoList"></div>
+    <div class="modal-actions"><button onclick="closeDriveVideoModal()">關閉</button></div>
+  </div>
+
+  <script>
+    // Server-embedded initial data — first paint already has icons, no second round trip.
+    const initialData = JSON.parse('<?!= initialData ?>');
+    const desktopList = JSON.parse('<?!= desktopList ?>');
+    let pendingDropTarget = null;
+    let pendingDropFiles = [];
+    let currentFolderId = initialData.folderId;
+    let currentDesktopIsShared = !!initialData.isSharedDesktop;
+    let sidebarState = initialData.sidebarState || 'icons'; // 'peek' | 'icons' | 'full'
+    let itemsById = {};
+    let appLinksById = {};
+    let browseStack = [];          // {id, name} for each ancestor level, for the folder path bar
+    let currentBrowseFolderId = null; // null = desktop root
+    let currentBrowseFolderName = '';
+    const DEFAULT_BG = 'linear-gradient(135deg, #1e1e2e, #2b2d42, #0f3460)';
+    // Final fallback when any icon URL fails — self-drawn, so unlike every other
+    // icon source in this app, this one has no external dependency to fail on.
+    const GENERIC_ICON_FALLBACK = svgIcon('#5f6368', '❔');
+
+    let isMobile = window.matchMedia('(max-width: 768px)').matches;
+    let lastItems = []; // cached so a viewport change can re-render without a server round trip
+
+    let wallpaperSlideshowTimer = null;
+    let wallpaperPlaylist = null;
+    let wallpaperPlaylistIndex = 0;
+
+    function setBackgroundValue(v) {
+      document.body.style.backgroundImage = /^(linear|radial)-gradient\(/.test(v) ? v : "url('" + v + "')";
+    }
+
+    function setWallpaperLabel(url) {
+      const el = document.getElementById('nowWallpaperText');
+      if (!el) return;
+      el.textContent = url ? filenameFromUrl(url) : '';
+    }
+
+    function applyBackground(value) {
+      if (wallpaperSlideshowTimer) { clearInterval(wallpaperSlideshowTimer); wallpaperSlideshowTimer = null; }
+      wallpaperPlaylist = null;
+      const v = value || DEFAULT_BG;
+
+      let list = null;
+      try {
+        const parsed = JSON.parse(v);
+        if (Array.isArray(parsed) && parsed.length) list = parsed;
+      } catch (e) { /* not a list — a single gradient or URL, handled below */ }
+
+      if (list) {
+        wallpaperPlaylist = list;
+        wallpaperPlaylistIndex = 0;
+        setBackgroundValue(list[0]);
+        setWallpaperLabel(list[0]);
+        const wallpaperPill = document.getElementById('nowWallpaperPill');
+        if (wallpaperPill) wallpaperPill.style.display = '';
+        wallpaperSlideshowTimer = setInterval(() => {
+          wallpaperPlaylistIndex = (wallpaperPlaylistIndex + 1) % wallpaperPlaylist.length;
+          setBackgroundValue(wallpaperPlaylist[wallpaperPlaylistIndex]);
+          setWallpaperLabel(wallpaperPlaylist[wallpaperPlaylistIndex]);
+        }, 5 * 60 * 1000); // every 5 minutes
+        return;
+      }
+      wallpaperPlaylist = null;
+      setWallpaperLabel(null);
+      setBackgroundValue(v);
+      const wallpaperPill = document.getElementById('nowWallpaperPill');
+      if (wallpaperPill) wallpaperPill.style.display = 'none';
+    }
+
+    function updateBreadcrumb(data) {
+      currentBrowseFolderName = data.browseFolderName || '';
+      renderFolderBar();
+    }
+
+    function renderFolderBar() {
+      const bar = document.getElementById('folderBar');
+      const showBar = browseStack.length > 0;
+      bar.classList.toggle('show', showBar);
+      document.getElementById('desktop').classList.toggle('folder-bar-visible', showBar);
+      if (!showBar) return;
+
+      const trail = document.getElementById('folderBreadcrumbTrail');
+      trail.innerHTML = '';
+      browseStack.forEach((seg, i) => {
+        const a = document.createElement('span');
+        a.className = 'crumb';
+        a.textContent = seg.name;
+        a.onclick = () => goToBreadcrumb(i);
+        trail.appendChild(a);
+        const sep = document.createElement('span');
+        sep.className = 'crumb-sep';
+        sep.textContent = '›';
+        trail.appendChild(sep);
+      });
+      const current = document.createElement('span');
+      current.className = 'crumb current';
+      current.textContent = currentBrowseFolderName;
+      trail.appendChild(current);
+    }
+
+    function goToBreadcrumb(i) {
+      const target = browseStack[i];
+      currentBrowseFolderId = target.id;
+      browseStack = browseStack.slice(0, i);
+      refreshDesktop();
+    }
+
+    let musicPlaying = false;
+
+    let musicPlaylist = null;
+    let musicPlaylistIndex = 0;
+
+    // Pulls a readable "track name" out of a URL for the now-playing marquee —
+    // our music sources are just pasted links, not files with real metadata,
+    // so the filename in the URL's own path is the best label we have.
+    function filenameFromUrl(url) {
+      try {
+        const path = url.split('?')[0].split('#')[0];
+        const last = path.substring(path.lastIndexOf('/') + 1);
+        return decodeURIComponent(last) || url;
+      } catch (e) {
+        return url;
+      }
+    }
+
+    function setNowPlayingLabel(url) {
+      document.getElementById('nowPlayingText').textContent = url ? filenameFromUrl(url) : '';
+    }
+
+    let wallpaperPickerPopupEl = null;
+
+    function openWallpaperPicker(event) {
+      if (event) event.stopPropagation();
+      if (!wallpaperPlaylist || wallpaperPlaylist.length <= 1) return;
+      const popup = document.getElementById('wallpaperPickerPopup');
+      popup.innerHTML = '';
+      wallpaperPlaylist.forEach((url, i) => {
+        const row = document.createElement('div');
+        row.className = 'picker-row';
+        row.innerHTML = '<span class="picker-indicator">' + (i === wallpaperPlaylistIndex ? '▶' : '') + '</span>'
+          + '<span class="picker-name">' + filenameFromUrl(url) + '</span>';
+        row.onclick = (e) => { e.stopPropagation(); selectWallpaperSlide(i); };
+        popup.appendChild(row);
+      });
+      popup.style.display = 'block';
+      const pillRect = document.getElementById('nowWallpaperPill').getBoundingClientRect();
+      const popupRect = popup.getBoundingClientRect();
+      const fitsAbove = pillRect.top - popupRect.height - 8 >= 0;
+      popup.style.top = fitsAbove ? (pillRect.top - popupRect.height - 8) + 'px' : (pillRect.bottom + 8) + 'px';
+      let left = pillRect.right - popupRect.width;
+      if (left < 8) left = 8;
+      if (left + popupRect.width > window.innerWidth) left = window.innerWidth - popupRect.width - 8;
+      popup.style.left = left + 'px';
+    }
+    function closeWallpaperPicker() { document.getElementById('wallpaperPickerPopup').style.display = 'none'; }
+
+    function selectWallpaperSlide(i) {
+      if (!wallpaperPlaylist) return;
+      wallpaperPlaylistIndex = i;
+      setBackgroundValue(wallpaperPlaylist[i]);
+      setWallpaperLabel(wallpaperPlaylist[i]);
+      closeWallpaperPicker();
+    }
+
+    function openPlaylistPicker(event) {
+      if (event) event.stopPropagation();
+      if (!musicPlaylist || musicPlaylist.length <= 1) return; // nothing to pick between
+      const popup = document.getElementById('playlistPickerPopup');
+      popup.innerHTML = '';
+      musicPlaylist.forEach((url, i) => {
+        const row = document.createElement('div');
+        row.className = 'picker-row';
+        row.innerHTML = '<span class="picker-indicator">' + (i === musicPlaylistIndex ? '▶' : '') + '</span>'
+          + '<span class="picker-name">' + filenameFromUrl(url) + '</span>';
+        row.onclick = (e) => { e.stopPropagation(); selectPlaylistTrack(i); };
+        popup.appendChild(row);
+      });
+      popup.style.display = 'block';
+      const pillRect = document.getElementById('nowPlayingPill').getBoundingClientRect();
+      const popupRect = popup.getBoundingClientRect();
+      const fitsAbove = pillRect.top - popupRect.height - 8 >= 0;
+      popup.style.top = fitsAbove ? (pillRect.top - popupRect.height - 8) + 'px' : (pillRect.bottom + 8) + 'px';
+      let left = pillRect.right - popupRect.width;
+      if (left < 8) left = 8;
+      if (left + popupRect.width > window.innerWidth) left = window.innerWidth - popupRect.width - 8;
+      popup.style.left = left + 'px';
+    }
+    function closePlaylistPicker() { document.getElementById('playlistPickerPopup').style.display = 'none'; }
+
+    function selectPlaylistTrack(i) {
+      if (!musicPlaylist) return;
+      musicPlaylistIndex = i;
+      const audio = document.getElementById('musicAudio');
+      if (audio) {
+        audio.src = musicPlaylist[i];
+        setNowPlayingLabel(musicPlaylist[i]);
+        if (musicPlaying) audio.play().catch(e => console.error('播放失敗:', e));
+      }
+      closePlaylistPicker();
+    }
+
+    function setupMusic(value, volume) {
+      const container = document.getElementById('musicPlayerContainer');
+      const volContainer = document.getElementById('volumeContainer');
+      const range = document.getElementById('volumeRange');
+      container.innerHTML = '';
+      musicPlaying = false;
+      musicPlaylist = null;
+      const vol = volume != null ? volume : 0.5;
+      range.value = vol;
+      if (!value) { volContainer.style.display = 'none'; return; }
+
+      let list = null;
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed) && parsed.length) list = parsed;
+      } catch (e) { /* a single URL, not a playlist */ }
+
+      volContainer.style.display = 'flex';
+      document.getElementById('playToggleBtn').textContent = '▶';
+      document.getElementById('playToggleBtn').style.opacity = '';
+      document.getElementById('playToggleBtn').style.pointerEvents = '';
+      const audio = document.createElement('audio');
+      audio.id = 'musicAudio';
+      audio.volume = vol;
+      audio.onerror = () => {
+        document.getElementById('nowPlayingText').textContent = '⚠️ 無法播放';
+        const btn = document.getElementById('playToggleBtn');
+        btn.style.opacity = '0.4';
+        btn.style.pointerEvents = 'none';
+      };
+
+      if (list) {
+        musicPlaylist = list;
+        musicPlaylistIndex = 0;
+        audio.src = list[0];
+        setNowPlayingLabel(list[0]);
+        audio.onended = () => {
+          musicPlaylistIndex = (musicPlaylistIndex + 1) % musicPlaylist.length;
+          audio.src = musicPlaylist[musicPlaylistIndex];
+          setNowPlayingLabel(musicPlaylist[musicPlaylistIndex]);
+          audio.play().catch(e => console.error('播放失敗:', e));
+        };
+      } else {
+        audio.src = value;
+        setNowPlayingLabel(value);
+        audio.loop = true;
+      }
+      container.appendChild(audio);
+    }
+
+    function changeVolume(val) {
+      const audio = document.getElementById('musicAudio');
+      if (audio) audio.volume = parseFloat(val);
+      google.script.run.saveMusicVolume(currentFolderId, val);
+    }
+
+    function toggleMusic(event) {
+      if (event) event.stopPropagation();
+      const audio = document.getElementById('musicAudio');
+      if (!audio) return;
+      if (musicPlaying) { audio.pause(); } else { audio.play().catch(e => console.error('播放失敗:', e)); }
+      musicPlaying = !musicPlaying;
+      document.getElementById('playToggleBtn').textContent = musicPlaying ? '❚❚' : '▶';
+    }
+
+    function toggleVolumeSlider(event) {
+      if (event) event.stopPropagation();
+      document.getElementById('volumeSliderPopup').classList.toggle('show');
+    }
+    function hideVolumeSlider() {
+      document.getElementById('volumeSliderPopup').classList.remove('show');
+    }
+
+    // ---- Clock widget (pure client-side — nothing to store, it's just the current time) ----
+    function updateClock() {
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('clockTime').textContent = hours + ':' + minutes;
+      const weekDays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+      document.getElementById('clockDate').textContent = (now.getMonth() + 1) + '月' + now.getDate() + '日 ' + weekDays[now.getDay()];
+    }
+
+    let calendarViewDate = new Date(); // the month currently shown — separate from "today"
+
+    function renderMiniCalendar() {
+      const today = new Date();
+      const year = calendarViewDate.getFullYear(), month = calendarViewDate.getMonth();
+      document.getElementById('calMonthTitle').textContent = year + ' 年 ' + (month + 1) + ' 月';
+      const grid = document.getElementById('calGrid');
+      grid.innerHTML = '';
+      ['日', '一', '二', '三', '四', '五', '六'].forEach(h => {
+        const el = document.createElement('div');
+        el.className = 'cal-day-header';
+        el.textContent = h;
+        grid.appendChild(el);
+      });
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
+      document.getElementById('calTodayBtn').style.display = isCurrentMonth ? 'none' : '';
+      for (let i = 0; i < firstDay; i++) grid.appendChild(document.createElement('div'));
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dayEl = document.createElement('div');
+        dayEl.className = 'cal-day' + (isCurrentMonth && d === today.getDate() ? ' today' : '');
+        dayEl.textContent = d;
+        grid.appendChild(dayEl);
+      }
+    }
+
+    function calendarShiftMonth(delta) {
+      calendarViewDate.setMonth(calendarViewDate.getMonth() + delta);
+      renderMiniCalendar();
+    }
+
+    function calendarGoToday() {
+      calendarViewDate = new Date();
+      renderMiniCalendar();
+    }
+
+    function toggleMiniCalendar() {
+      const modal = document.getElementById('miniCalendarModal');
+      const isShow = modal.style.display === 'block';
+      if (!isShow) {
+        calendarViewDate = new Date(); // always start on the current month when freshly opened
+        const rect = document.getElementById('clockWidget').getBoundingClientRect();
+        modal.style.right = (window.innerWidth - rect.right) + 'px';
+        modal.style.left = 'auto';
+        modal.style.display = 'block';
+        renderMiniCalendar();
+        // Measure the real height now that it has content, then pick above
+        // or below the clock depending on which direction actually has room.
+        const modalRect = modal.getBoundingClientRect();
+        const fitsBelow = rect.bottom + 8 + modalRect.height <= window.innerHeight;
+        modal.style.top = fitsBelow ? (rect.bottom + 8) + 'px' : Math.max(8, rect.top - modalRect.height - 8) + 'px';
+        if (rect.right - modalRect.width < 8) { modal.style.left = '8px'; modal.style.right = 'auto'; }
+        return;
+      }
+      modal.style.display = 'none';
+    }
+    function closeMiniCalendar() { document.getElementById('miniCalendarModal').style.display = 'none'; }
+
+    const CLOCK_COLOR_PRESETS = [
+      { name: '深色', value: 'rgba(20,20,28,0.55)' },
+      { name: '白色', value: 'rgba(255,255,255,0.22)' },
+      { name: '藍色', value: 'rgba(59,130,246,0.35)' },
+      { name: '紫色', value: 'rgba(147,51,234,0.35)' },
+      { name: '綠色', value: 'rgba(34,197,94,0.35)' },
+      { name: '粉紅', value: 'rgba(244,63,94,0.35)' }
+    ];
+
+    function openClockColorPicker(x, y) {
+      const picker = document.getElementById('clockColorPicker');
+      const swatches = document.getElementById('clockColorSwatches');
+      swatches.innerHTML = '';
+      CLOCK_COLOR_PRESETS.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'color-swatch';
+        div.title = p.name;
+        div.style.background = p.value;
+        div.onclick = (e) => { e.stopPropagation(); applyClockColor(p.value); closeClockColorPicker(); };
+        swatches.appendChild(div);
+      });
+      picker.style.display = 'block';
+      clampPopupToViewport(picker, x, y);
+    }
+    function closeClockColorPicker() {
+      const picker = document.getElementById('clockColorPicker');
+      if (picker) picker.style.display = 'none';
+    }
+
+    function applyClockColor(color) {
+      document.getElementById('clockWidget').style.background = color;
+      google.script.run.saveClockColor(currentFolderId, color);
+    }
+
+    function startClock() {
+      updateClock();
+      setInterval(updateClock, 1000);
+    }
+
+    window.onload = function () {
+      if (initialData.tabTitle) document.title = initialData.tabTitle;
+      document.getElementById('topbarPills').classList.toggle('icon-only', !!initialData.iconOnlyTopbar);
+      equalizePillWidths();
+      applyBackground(initialData.background);
+      setupMusic(initialData.music, initialData.volume);
+      renderAppSidebar(initialData.appLinks);
+      applySidebarState();
+      renderDesktop(initialData.items);
+      renderDesktopSelect(desktopList);
+      updateBreadcrumb(initialData);
+      startClock();
+      if (initialData.clockColor) document.getElementById('clockWidget').style.background = initialData.clockColor;
+
+      const clockEl = document.getElementById('clockWidget');
+      clockEl.oncontextmenu = (e) => {
+        e.preventDefault(); e.stopPropagation();
+        openClockColorPicker(e.clientX, e.clientY);
+      };
+      let clockLongPressTimer = null;
+      clockEl.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'touch') return;
+        const sx = e.clientX, sy = e.clientY;
+        clockLongPressTimer = setTimeout(() => openClockColorPicker(sx, sy), 500);
+      });
+      clockEl.addEventListener('pointermove', () => { if (clockLongPressTimer) { clearTimeout(clockLongPressTimer); clockLongPressTimer = null; } });
+      clockEl.addEventListener('pointerup', () => { if (clockLongPressTimer) { clearTimeout(clockLongPressTimer); clockLongPressTimer = null; } });
+
+      document.addEventListener('keydown', e => {
+        if (e.ctrlKey && e.code === 'Space') { e.preventDefault(); openSpotlight(); }
+      });
+      document.addEventListener('click', hideContextMenu);
+      document.addEventListener('click', hideVolumeSlider);
+      document.addEventListener('click', closePlaylistPicker);
+      document.addEventListener('click', closeWallpaperPicker);
+      document.addEventListener('click', closeClockColorPicker);
+      document.addEventListener('click', closeMiniCalendar);
+
+      const desktopEl = document.getElementById('desktop');
+      desktopEl.oncontextmenu = (e) => {
+        if (e.target.id !== 'desktop') return; // an icon's own handler already dealt with it
+        e.preventDefault();
+        showContextMenu(e.clientX, e.clientY, desktopMenuEntries());
+      };
+
+      // Touch has no right-click — long-press on empty space opens the same menu.
+      let desktopLongPressTimer = null;
+      desktopEl.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'touch' || e.target.id !== 'desktop') return;
+        e.preventDefault();
+        const sx = e.clientX, sy = e.clientY;
+        desktopLongPressTimer = setTimeout(() => {
+          showContextMenu(sx, sy, desktopMenuEntries());
+        }, 500);
+      });
+      desktopEl.addEventListener('pointermove', () => {
+        if (desktopLongPressTimer) { clearTimeout(desktopLongPressTimer); desktopLongPressTimer = null; }
+      });
+      desktopEl.addEventListener('pointerup', () => {
+        if (desktopLongPressTimer) { clearTimeout(desktopLongPressTimer); desktopLongPressTimer = null; }
+      });
+    };
+
+    function desktopMenuEntries() {
+      const entries = [{ label: '重新整理', action: refreshDesktop }];
+      if (!isMobileLayout()) entries.push({ label: '排列圖示', action: arrangeIcons });
+      entries.push(
+        { sep: true },
+        { label: '重新命名此桌面', action: renameDesktopPrompt },
+        { label: '設定分頁標題', action: setTabTitlePrompt },
+        { label: document.getElementById('topbarPills').classList.contains('icon-only') ? '頂端列恢復文字' : '頂端列改純圖示（文字異常時的備案）', action: toggleIconOnlyTopbar },
+        { label: '新增資料夾', action: createFolderPrompt },
+        { label: '搜尋並新增雲端檔案', action: openSpotlight },
+        { label: '設定個人服務 icon', action: openAppLinkModal },
+        { label: '桌布設定', action: openWallpaperModal },
+        { label: '背景音樂設定', action: openMusicModal },
+        { sep: true },
+        { label: '🎵 雲端硬碟音樂播放器', action: openMusicPlayerModal },
+        { label: '🖼️ 雲端硬碟相片瀏覽器', action: openPhotoViewerModal },
+        { label: '🎬 雲端硬碟影片播放器', action: openVideoPlayerModal }
+      );
+      if (currentDesktopIsShared) {
+        entries.push({ sep: true }, { label: '從我的清單移除這個分享桌面', action: leaveSharedDesktop });
+      }
+      return entries;
+    }
+
+    // Cycles 貼齊 → 圖示 → 展開 → 貼齊 ... Passing a specific state (e.g. from
+    // the backdrop tap) jumps straight there instead of cycling.
+    function cycleSidebarState(forceState) {
+      const order = ['peek', 'icons', 'full'];
+      if (forceState) {
+        sidebarState = forceState;
+      } else {
+        sidebarState = order[(order.indexOf(sidebarState) + 1) % order.length];
+      }
+      google.script.run.saveSidebarState(currentFolderId, sidebarState);
+      applySidebarState();
+    }
+
+    function renameDesktopPrompt() {
+      const opt = document.querySelector('#desktopSelect option[value="' + currentFolderId + '"]');
+      const currentName = opt ? opt.textContent.replace(/^🔗 /, '') : '';
+      const name = (prompt('新桌面名稱：', currentName) || '').trim();
+      if (!name) return;
+      google.script.run.withSuccessHandler(() => {
+        if (opt) opt.textContent = (currentDesktopIsShared ? '🔗 ' : '') + name;
+      }).renameDesktop(currentFolderId, name);
+    }
+
+    function setTabTitlePrompt() {
+      const name = (prompt('分頁標題（只有你自己看得到，不影響其他人）：', document.title) || '').trim();
+      if (!name) return;
+      document.title = name;
+      google.script.run.saveCustomTitle(name);
+    }
+
+    // confirm() runs BEFORE anything else, while this tab still has focus —
+    // showing instructions AFTER opening Gemini doesn't work, because
+    // window.open() steals focus to the new tab first, so any message
+    // shown afterward ends up hidden behind it until that tab is closed.
+    let pendingGeminiItem = null;
+
+    function askInGemini(item) {
+      const link = itemShareLink(item);
+      if (!link) return;
+      pendingGeminiItem = item;
+      document.getElementById('geminiConfirmText').textContent =
+        '即將複製「' + item.name + '」的連結，並開啟 Gemini。開啟後，直接在 Gemini 對話框貼上（Ctrl+V / ⌘+V）就可以問它這份檔案的內容。（要用同一個 Google 帳號登入才讀得到）';
+      document.getElementById('geminiConfirmModal').classList.add('open');
+    }
+
+    function closeGeminiConfirmModal() {
+      document.getElementById('geminiConfirmModal').classList.remove('open');
+      pendingGeminiItem = null;
+    }
+
+    function confirmAskInGemini() {
+      const item = pendingGeminiItem;
+      closeGeminiConfirmModal();
+      if (!item) return;
+      const link = itemShareLink(item);
+      // This "確定" button click IS a fresh, genuine user gesture on the page
+      // itself (unlike clicking OK on a native confirm(), which is browser
+      // chrome, not page content) — so window.open() called synchronously
+      // right here, first thing, is NOT treated as a popup and isn't blocked.
+      const w = openWindow('Gemini', 'https://gemini.google.com/app');
+      copyTextToClipboard(item.name + '\n' + link).catch(() => {
+        prompt('自動複製失敗，請手動複製這個連結：', item.name + '\n' + link);
+      });
+    }
+
+    function toggleIconOnlyTopbar() {
+      const container = document.getElementById('topbarPills');
+      const enabled = !container.classList.contains('icon-only');
+      container.classList.toggle('icon-only', enabled);
+      equalizePillWidths();
+      google.script.run.saveIconOnlyTopbar(enabled);
+    }
+
+    function leaveSharedDesktop() {
+      if (!confirm('從你的桌面清單移除這個分享桌面？（只是從你這裡拿掉，不會影響原本擁有者跟其他被分享的人）')) return;
+      google.script.run.withSuccessHandler(() => {
+        onDesktopSwitch(initialData.folderId); // back to your own default desktop
+        google.script.run.withSuccessHandler(renderDesktopSelect).listAvailableDesktops();
+      }).removeSharedDesktop(currentFolderId);
+    }
+
+    function refreshDesktop() {
+      google.script.run.withSuccessHandler(data => {
+        currentFolderId = data.folderId;
+        currentDesktopIsShared = !!data.isSharedDesktop;
+        sidebarState = data.sidebarState || 'icons';
+        applyBackground(data.background);
+        renderAppSidebar(data.appLinks);
+        applySidebarState();
+        renderDesktop(data.items);
+        updateBreadcrumb(data);
+      }).getDesktopItems(currentBrowseFolderId);
+    }
+
+    // ---- Folder navigation (browsing into a subfolder on the desktop) ----
+    function enterFolder(item) {
+      browseStack.push({ id: currentBrowseFolderId, name: currentBrowseFolderName });
+      currentBrowseFolderId = item.targetId || item.id; // shortcut-to-folder uses targetId; a real subfolder uses its own id
+      refreshDesktop();
+    }
+
+    function goUpFolder() {
+      if (!browseStack.length) return;
+      const prev = browseStack.pop();
+      currentBrowseFolderId = prev.id;
+      refreshDesktop();
+    }
+
+    function createFolderPrompt() {
+      const name = (prompt('資料夾名稱：') || '').trim();
+      if (!name) return;
+      const parentId = currentBrowseFolderId || currentFolderId;
+      google.script.run.withSuccessHandler(refreshDesktop).createSubfolder(parentId, name);
+    }
+
+    function renderDesktopSelect(list) {
+      const sel = document.getElementById('desktopSelect');
+      sel.innerHTML = '';
+      list.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.id; opt.textContent = d.name; opt.selected = d.active;
+        sel.appendChild(opt);
+      });
+    }
+
+    function onDesktopSwitch(folderId) {
+      browseStack = [];
+      currentBrowseFolderId = null;
+      google.script.run.withSuccessHandler(data => {
+        currentFolderId = data.folderId;
+        currentDesktopIsShared = !!data.isSharedDesktop;
+        sidebarState = data.sidebarState || 'icons';
+        applyBackground(data.background);
+        document.getElementById('clockWidget').style.background = data.clockColor || '';
+        setupMusic(data.music, data.volume);
+        renderAppSidebar(data.appLinks);
+        applySidebarState();
+        renderDesktop(data.items);
+        updateBreadcrumb(data);
+      }).switchDesktop(folderId);
+    }
+
+    function createDesktopPrompt() {
+      const name = (prompt('新桌面名稱：') || '').trim();
+      if (!name) return;
+      google.script.run.withSuccessHandler(newDesktop => {
+        // Add it straight into the dropdown from what the server just handed
+        // back — re-querying Drive's folder listing right after creation can
+        // lag a moment before it shows up, so don't rely on that round trip.
+        const sel = document.getElementById('desktopSelect');
+        const opt = document.createElement('option');
+        opt.value = newDesktop.id;
+        opt.textContent = newDesktop.name;
+        sel.appendChild(opt);
+        sel.value = newDesktop.id;
+        onDesktopSwitch(newDesktop.id);
+      }).createNewDesktop(name);
+    }
+
+    function joinSharedDesktopPrompt() {
+      const link = prompt('貼上對方分享給你的資料夾連結或 ID：\n（對方要先在 Google Drive 把那個桌面資料夾分享給你，這裡才抓得到）');
+      if (!link) return;
+      google.script.run
+        .withSuccessHandler(shared => {
+          const sel = document.getElementById('desktopSelect');
+          const opt = document.createElement('option');
+          opt.value = shared.id;
+          opt.textContent = '🔗 ' + shared.name;
+          sel.appendChild(opt);
+          sel.value = shared.id;
+          onDesktopSwitch(shared.id);
+        })
+        .withFailureHandler(err => alert('加入失敗，請確認對方已經把資料夾分享給你的帳號：' + err.message))
+        .addSharedDesktop(link);
+    }
+
+    // Personal app-link icons use Google's public favicon service so we don't
+    // have to hardcode/host icon assets for each service.
+    function iconUrlFor(item) {
+      if (item.iconOverride) return item.iconOverride;
+      if (item.type === 'folder') return svgIcon('#F4B400', '📁');
+      if (item.type === 'app') {
+        // Verified working Google-hosted icon URLs (user-tested), covers both
+        // the four core services and the "create new X" shortcuts below.
+        const builtIn = {
+          gmail: 'https://ssl.gstatic.com/ui/v1/icons/mail/rfr/gmail.ico',
+          calendar: 'https://ssl.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_31_2x.png',
+          drive: 'https://ssl.gstatic.com/images/branding/product/2x/drive_2020q4_48dp.png',
+          keep: 'https://ssl.gstatic.com/keep/keep_2020q4.ico',
+          docs: 'https://ssl.gstatic.com/images/branding/product/2x/docs_2020q4_48dp.png',
+          sheets: 'https://ssl.gstatic.com/images/branding/product/2x/sheets_2020q4_48dp.png',
+          slides: 'https://ssl.gstatic.com/images/branding/product/2x/slides_2020q4_48dp.png',
+          forms: 'https://ssl.gstatic.com/images/branding/product/2x/forms_2020q4_48dp.png'
+        };
+        if (builtIn[item.icon]) return builtIn[item.icon];
+        // Custom sites the user added themselves (their own domain, e.g.
+        // claude.ai) — ordinary websites declare a real favicon, so this works.
+        return 'https://www.google.com/s2/favicons?sz=64&domain=' + item.icon;
+      }
+      if (item.type === 'drive') {
+        const mimeIcons = {
+          'application/vnd.google-apps.document': 'https://ssl.gstatic.com/images/branding/product/2x/docs_2020q4_48dp.png',
+          'application/vnd.google-apps.spreadsheet': 'https://ssl.gstatic.com/images/branding/product/2x/sheets_2020q4_48dp.png',
+          'application/vnd.google-apps.presentation': 'https://ssl.gstatic.com/images/branding/product/2x/slides_2020q4_48dp.png',
+          'application/vnd.google-apps.form': 'https://ssl.gstatic.com/images/branding/product/2x/forms_2020q4_48dp.png',
+          'application/pdf': 'https://ssl.gstatic.com/docs/doclist/images/mediatype/icon_3_pdf_x64.png',
+          'application/vnd.google.colaboratory': svgIcon('#F9AB00', '▶️')
+        };
+        if (mimeIcons[item.mimeType]) return mimeIcons[item.mimeType];
+      }
+      return 'https://cdn-icons-png.flaticon.com/512/5968/5968523.png';
+    }
+
+    // Sizes all four topbar pills to match the widest one. Deliberately
+    // measures the actual rendered content rather than hardcoding a width —
+    // if the labels ever change length (e.g. a future language switch),
+    // this just recalculates correctly with no changes needed here.
+    function equalizePillWidths() {
+      const pills = document.querySelectorAll('#topbarPills .pill');
+      if (!pills.length) return;
+      pills.forEach(p => { p.style.width = 'auto'; });
+      let max = 0;
+      pills.forEach(p => { max = Math.max(max, p.getBoundingClientRect().width); });
+      pills.forEach(p => { p.style.width = Math.ceil(max) + 'px'; });
+    }
+
+    function isMobileLayout() {
+      return window.innerWidth <= 768;
+    }
+
+    let currentItemsCache = []; // last-rendered items, so resize can re-render without a server round trip
+    let lastLayoutWasMobile = null;
+
+    function renderDesktop(items) {
+      currentItemsCache = items;
+      const container = document.getElementById('desktop');
+      container.innerHTML = '';
+      itemsById = {};
+      const mobile = isMobileLayout();
+      lastLayoutWasMobile = mobile;
+      container.classList.toggle('mobile-mode', mobile);
+
+      // Mobile grid order comes from mobileOrder (set by drag-reordering);
+      // items that have never been reordered keep the server's original order.
+      const ordered = mobile
+        ? items.slice().sort((a, b) => (a.mobileOrder != null ? a.mobileOrder : 9999) - (b.mobileOrder != null ? b.mobileOrder : 9999))
+        : items;
+
+      ordered.forEach(item => {
+        itemsById[item.id] = item;
+        const div = document.createElement('div');
+        div.className = 'icon';
+        div.id = item.id;
+        if (!mobile) {
+          div.style.left = item.x + 'px';
+          div.style.top = item.y + 'px';
+        }
+        div.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); showIconContextMenu(e, item); };
+
+        const imgWrap = document.createElement('div');
+        imgWrap.className = 'icon-imgwrap';
+        const img = document.createElement('img');
+        img.draggable = false;
+        img.src = iconUrlFor(item);
+        img.onerror = function () { this.onerror = null; this.src = GENERIC_ICON_FALLBACK; };
+        imgWrap.appendChild(img);
+        // A shortcut points elsewhere and is safe to remove without losing
+        // anything; a real file/folder isn't — flag which is which at a glance.
+        const isShortcutItem = item.type === 'drive' ? !!item.isShortcut : (item.type === 'folder' ? item.real === false : false);
+        if (isShortcutItem) {
+          const badge = document.createElement('span');
+          badge.className = 'shortcut-badge';
+          badge.textContent = '↗';
+          imgWrap.appendChild(badge);
+        }
+        const label = document.createElement('span');
+        label.textContent = item.name;
+        div.appendChild(imgWrap);
+        div.appendChild(label);
+
+        container.appendChild(div);
+        makeDraggable(div);
+      });
+    }
+
+    // Personal-service icons live in the fixed sidebar dock, separate from
+    // the free-position file/folder grid — same click-to-open and
+    // context-menu logic as any other icon, just laid out as a static list.
+    function renderAppSidebar(appLinks) {
+      appLinksById = {};
+      const grid = document.getElementById('sidebarIconGrid');
+      grid.innerHTML = '';
+      (appLinks || []).forEach(item => {
+        appLinksById[item.id] = item;
+        const div = document.createElement('div');
+        div.className = 'icon';
+        div.id = item.id;
+        div.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); showIconContextMenu(e, item); };
+
+        const img = document.createElement('img');
+        img.draggable = false;
+        img.src = iconUrlFor(item);
+        img.onerror = function () { this.onerror = null; this.src = GENERIC_ICON_FALLBACK; };
+        const label = document.createElement('span');
+        label.textContent = item.name;
+        div.appendChild(img);
+        div.appendChild(label);
+
+        makeSidebarIconDraggable(div, item);
+        grid.appendChild(div);
+      });
+
+      // "+" to add a new personal service icon, right in the sidebar itself.
+      const addBtn = document.createElement('div');
+      addBtn.className = 'addLinkBtn';
+      addBtn.title = '新增個人服務 icon';
+      addBtn.innerHTML = '<img src="' + plusIcon('#4a4a5e') + '" draggable="false"><span>新增連結</span>';
+      addBtn.onclick = () => openAppLinkModal();
+      grid.appendChild(addBtn);
+    }
+
+    // Same click-vs-drag pattern used everywhere else in this app: a small
+    // movement is a tap (open the link), a bigger one is a drag (reorder).
+    function makeSidebarIconDraggable(div, item) {
+      let dragging = false, startX = 0, startY = 0;
+
+      div.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        dragging = true;
+        startX = e.clientX; startY = e.clientY;
+        div.setPointerCapture(e.pointerId);
+      });
+
+      div.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+        if (dist > 8) {
+          div.style.position = 'fixed';
+          div.style.left = (e.clientX - 20) + 'px';
+          div.style.top = (e.clientY - 20) + 'px';
+          div.style.zIndex = 2000;
+          div.style.pointerEvents = 'none'; // so the drop-target search below hits siblings, not this element
+        }
+      });
+
+      div.addEventListener('pointerup', (e) => {
+        if (!dragging) return;
+        dragging = false;
+        div.releasePointerCapture(e.pointerId);
+        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+        const wasLifted = div.style.position === 'fixed';
+        div.style.position = '';
+        div.style.zIndex = '';
+        div.style.pointerEvents = '';
+        if (dist < 8) {
+          if (item.type === 'folder') enterFolder(item); else openWindow(item.name, item.url);
+          if (isMobileLayout() && sidebarState !== 'peek') cycleSidebarState('peek');
+          return;
+        }
+        if (wasLifted) reorderSidebarIcon(div, e.clientX, e.clientY);
+      });
+    }
+
+    function reorderSidebarIcon(div, x, y) {
+      const grid = document.getElementById('sidebarIconGrid');
+      const siblings = Array.from(grid.querySelectorAll('.icon')).filter(el => el !== div);
+      let targetIndex = siblings.length;
+      for (let i = 0; i < siblings.length; i++) {
+        const rect = siblings[i].getBoundingClientRect();
+        const midX = rect.left + rect.width / 2;
+        const midY = rect.top + rect.height / 2;
+        if (y < midY - rect.height / 4 || (y < rect.bottom && x < midX)) { targetIndex = i; break; }
+      }
+      if (targetIndex >= siblings.length) grid.insertBefore(div, grid.querySelector('.addLinkBtn'));
+      else grid.insertBefore(div, siblings[targetIndex]);
+
+      // Each icon's id is still its OLD posKey ('APPLINK_<folder>_<oldIndex>')
+      // since we only moved the DOM node — reading them off in the new DOM
+      // order gives exactly the permutation the server needs.
+      const oldIndexOrder = Array.from(grid.querySelectorAll('.icon')).map(el => parseInt(el.id.split('_').pop(), 10));
+      google.script.run.withSuccessHandler(refreshDesktop).reorderAppLinks(currentFolderId, oldIndexOrder);
+    }
+
+    const SIDEBAR_WIDTHS = { peek: 22, icons: 60, full: 220 };
+
+    function applySidebarState() {
+      const sidebar = document.getElementById('appSidebar');
+      const desktop = document.getElementById('desktop');
+      const topbar = document.getElementById('topbar');
+      const folderBar = document.getElementById('folderBar');
+      const btn = document.getElementById('sidebarStateBtn');
+      sidebar.classList.remove('state-peek', 'state-icons', 'state-full');
+      sidebar.classList.add('state-' + sidebarState);
+      // Everything except the wallpaper reserves the same small peek width
+      // permanently — the wallpaper is just the body background, already
+      // full-bleed regardless. "icons"/"full" overlay on top of that rather
+      // than pushing things further over, same on every screen size.
+      desktop.classList.add('with-sidebar');
+      topbar.classList.add('with-sidebar');
+      folderBar.classList.add('with-sidebar');
+      btn.textContent = sidebarState === 'peek' ? '▶' : sidebarState === 'icons' ? '▶▶' : '◀';
+      btn.style.left = (SIDEBAR_WIDTHS[sidebarState] - 16) + 'px'; // half the 32px button on each side of the edge
+      document.getElementById('drawerBackdrop').classList.toggle('show', sidebarState !== 'peek');
+    }
+
+    // Re-render (from cache, no server round trip) only when crossing the
+    // mobile/desktop threshold — not on every pixel of window resizing.
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (isMobileLayout() !== lastLayoutWasMobile) {
+          renderDesktop(currentItemsCache);
+          applySidebarState();
+          equalizePillWidths();
+        }
+      }, 200);
+    });
+
+    // Native Pointer Events instead of interact.js — setPointerCapture guarantees
+    // move/up keep targeting this element for the whole gesture, so drag and a
+    // plain click (near-zero movement) can be told apart reliably in one place,
+    // with no separate gesture-recognizer layer to conflict with it.
+    function makeDraggable(div) {
+      let dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
+      let longPressTimer = null, longPressFired = false;
+
+      div.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return; // left button / primary touch contact only
+        dragging = true;
+        longPressFired = false;
+        startX = e.clientX; startY = e.clientY;
+        origLeft = parseFloat(div.style.left) || 0;
+        origTop = parseFloat(div.style.top) || 0;
+        div.setPointerCapture(e.pointerId);
+
+        if (e.pointerType === 'touch') {
+          // Touch has no right-click — a still-held press opens the same
+          // context menu a desktop right-click would.
+          longPressTimer = setTimeout(() => {
+            longPressFired = true;
+            dragging = false;
+            div.releasePointerCapture(e.pointerId);
+            const item = itemsById[div.id];
+            if (item) showIconContextMenu({ clientX: e.clientX, clientY: e.clientY }, item);
+          }, 500);
+        }
+      });
+
+      div.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+        if (dist > 8 && longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+
+        if (isMobileLayout()) {
+          if (dist > 8) {
+            // Lift it out of the grid flow to follow the finger; removing it
+            // from flex flow is also what makes the other icons slide over
+            // to fill the gap immediately, for free.
+            div.style.position = 'fixed';
+            div.style.left = (e.clientX - 34) + 'px';
+            div.style.top = (e.clientY - 34) + 'px';
+            div.style.zIndex = 500;
+          }
+        } else {
+          div.style.left = (origLeft + (e.clientX - startX)) + 'px';
+          div.style.top = (origTop + (e.clientY - startY)) + 'px';
+        }
+      });
+
+      div.addEventListener('pointerup', (e) => {
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        if (!dragging) return; // the long-press branch already handled this gesture
+        dragging = false;
+        div.releasePointerCapture(e.pointerId);
+        if (longPressFired) return; // context menu already opened
+
+        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+        if (dist < 8) {
+          const item = itemsById[div.id];
+          if (!item) return;
+          if (item.type === 'folder') enterFolder(item);
+          else openWindow(item.name, item.url);
+          return;
+        }
+
+        if (isMobileLayout()) {
+          div.style.position = '';
+          div.style.zIndex = '';
+          reorderMobileIcon(div, e.clientX, e.clientY);
+        } else {
+          google.script.run.saveIconPosition(div.id, parseFloat(div.style.left) || 0, parseFloat(div.style.top) || 0);
+        }
+      });
+    }
+
+    function reorderMobileIcon(div, x, y) {
+      const container = document.getElementById('desktop');
+      const siblings = Array.from(container.querySelectorAll('.icon')).filter(el => el !== div);
+      let targetIndex = siblings.length;
+      for (let i = 0; i < siblings.length; i++) {
+        const rect = siblings[i].getBoundingClientRect();
+        const midX = rect.left + rect.width / 2;
+        const midY = rect.top + rect.height / 2;
+        if (y < midY - rect.height / 4 || (y < rect.bottom && x < midX)) { targetIndex = i; break; }
+      }
+      if (targetIndex >= siblings.length) container.appendChild(div);
+      else container.insertBefore(div, siblings[targetIndex]);
+
+      const orderedIds = Array.from(container.querySelectorAll('.icon')).map(el => el.id);
+      google.script.run.saveMobileOrder(orderedIds);
+    }
+
+    function arrangeIcons() {
+      const container = document.getElementById('desktop');
+      const cols = Math.max(1, Math.floor((container.clientWidth - 40) / 100));
+      let i = 0;
+      document.querySelectorAll('.icon').forEach(div => {
+        const col = i % cols, row = Math.floor(i / cols);
+        const x = 20 + col * 100, y = 20 + row * 100;
+        div.style.left = x + 'px'; div.style.top = y + 'px';
+        google.script.run.saveIconPosition(div.id, x, y);
+        i++;
+      });
+    }
+
+    // A real separate browser window sidesteps Google's iframe-embedding block
+    // entirely (unlike the floating-window/iframe approach, which never had a
+    // chance against X-Frame-Options). Passing size/position features makes
+    // Chrome open it as its own smaller window instead of a new tab.
+    // To switch this to "always open as a normal tab" later, just drop the
+    // third argument: window.open(url, '_blank').
+    function openWindow(title, url) {
+      // width/height/left/top window-features only mean anything for a
+      // desktop "popup window" — on mobile there's no such thing (every new
+      // tab is full-screen), so pass the plainest possible call there
+      // instead of feeding Chrome a feature string it has to reinterpret.
+      if (isMobileLayout()) return window.open(url, '_blank');
+      const w = Math.round(window.screen.availWidth * 0.6);
+      const h = Math.round(window.screen.availHeight * 0.7);
+      const left = Math.round((window.screen.availWidth - w) / 2);
+      const top = Math.round((window.screen.availHeight - h) / 2);
+      return window.open(url, '_blank', 'width=' + w + ',height=' + h + ',left=' + left + ',top=' + top);
+    }
+
+    // ---- 傳送到其他服務 ----
+    // 只有這幾個內建服務有已知、可靠的「預填網址」格式；其他一律走複製連結的 fallback。
+    // Gmail 只能預填主旨/內文文字，無法用網址參數夾帶真正的附件（瀏覽器安全限制），
+    // 所以檔案連結是放進內文，使用者要「附加」檔案本身還是得自己手動操作。
+    const SEND_TO_BUILDERS = {
+      gmail: (item, link) => 'https://mail.google.com/mail/?view=cm&fs=1&su=' + encodeURIComponent(item.name) + '&body=' + encodeURIComponent(link),
+      calendar: (item, link) => 'https://calendar.google.com/calendar/u/0/r/eventedit?text=' + encodeURIComponent(item.name) + '&details=' + encodeURIComponent(link),
+      drive: (item, link) => link // 本來就在雲端硬碟，直接開啟檔案本身
+    };
+
+    function itemShareLink(item) {
+      if (item.type === 'drive') return 'https://drive.google.com/file/d/' + item.targetId + '/view';
+      if (item.type === 'folder') return 'https://drive.google.com/drive/folders/' + (item.targetId || item.id);
+      return null;
+    }
+
+    function showSendToMenu(event, item) {
+      const link = itemShareLink(item);
+      if (!link) return;
+      const targets = Object.values(appLinksById); // 側邊欄目前的服務（內建4個 + 自訂）
+      if (!targets.length) { alert('側邊欄還沒有設定任何個人服務，請先新增。'); return; }
+      const entries = targets.map(t => ({
+        label: (t.icon && SEND_TO_BUILDERS[t.icon]) ? ('📨 傳送到 ' + t.name) : ('📋 複製連結並開啟 ' + t.name),
+        action: () => sendItemToService(item, t, link)
+      }));
+      showContextMenu(event.clientX, event.clientY, entries);
+    }
+
+    function sendItemToService(item, target, link) {
+      const builder = target.icon && SEND_TO_BUILDERS[target.icon];
+      if (builder) {
+        openWindow(target.name, builder(item, link));
+        return;
+      }
+      // 沒有已知的預填格式（Keep、自訂網站等）→ 先同步開一個空白視窗（避免瀏覽器
+      // 把之後才觸發的 window.open 當成彈窗攔截），複製連結完成後再導向該服務。
+      const w = openWindow(target.name, 'about:blank');
+      const text = item.name + '\n' + link;
+      copyTextToClipboard(text).then(() => {
+        alert('已複製「' + item.name + '」的連結，貼到剛剛開啟的 ' + target.name + ' 分頁即可。');
+        if (w && !w.closed) w.location = target.url;
+      }).catch(() => {
+        if (w && !w.closed) w.location = target.url;
+        prompt('自動複製失敗，請手動複製這個連結：', text);
+      });
+    }
+
+    function copyTextToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text);
+      }
+      return new Promise((resolve, reject) => {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.focus(); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          resolve();
+        } catch (e) { reject(e); }
+      });
+    }
+
+    // ---- Folder tree modal — lazy: only fetches children when a folder is clicked ----
+    let folderPickerMode = 'upload'; // 'upload' | 'move'
+    let moveTargetItem = null;
+
+    function openFolderModal() {
+      folderPickerMode = 'upload';
+      document.getElementById('folderModal').classList.add('open');
+      const tree = document.getElementById('folderTree');
+      tree.innerHTML = '';
+      loadFolderLevel(null, tree);
+    }
+
+    function openMoveFolderPicker(item) {
+      folderPickerMode = 'move';
+      moveTargetItem = item;
+      pendingDropTarget = {};
+      document.getElementById('folderModal').classList.add('open');
+      const tree = document.getElementById('folderTree');
+      tree.innerHTML = '';
+      loadFolderLevel(null, tree);
+    }
+
+    function closeFolderModal() { document.getElementById('folderModal').classList.remove('open'); }
+
+    function loadFolderLevel(folderId, container) {
+      container.innerHTML = '載入中...';
+      google.script.run.withSuccessHandler(list => {
+        container.innerHTML = '';
+        list.forEach(f => {
+          const row = document.createElement('div');
+          row.className = 'tree-item';
+          row.textContent = '📁 ' + f.name;
+          row.onclick = (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('#folderTree .tree-item.selected').forEach(el => el.classList.remove('selected'));
+            row.classList.add('selected');
+            pendingDropTarget = Object.assign({}, pendingDropTarget, { folderId: f.id });
+            const sub = document.createElement('div');
+            sub.style.marginLeft = '16px';
+            row.after(sub);
+            loadFolderLevel(f.id, sub); // expand only this level, not the whole tree
+          };
+          container.appendChild(row);
+        });
+      }).getSubfolders(folderId);
+    }
+
+    async function confirmFolderTarget() {
+      if (!pendingDropTarget || !pendingDropTarget.folderId) { alert('請先選一個資料夾'); return; }
+      if (folderPickerMode === 'move') {
+        const destId = pendingDropTarget.folderId;
+        google.script.run
+          .withSuccessHandler(() => { closeFolderModal(); refreshDesktop(); })
+          .withFailureHandler(err => alert('移動失敗：' + err.message))
+          .moveItemToFolder(moveTargetItem.id, destId, !!moveTargetItem.real);
+        return;
+      }
+
+      const destId = pendingDropTarget.folderId;
+      const files = pendingDropFiles;
+      pendingDropFiles = [];
+      closeFolderModal();
+
+      let applyToAllChoice = null; // remembered update-vs-keep-both choice for the rest of this batch
+      for (const file of files) {
+        try {
+          const base64 = await readFileAsBase64(file);
+          const mimeType = file.type || 'application/octet-stream';
+          let updateFileId = null;
+          const check = await scriptRunPromise('checkExistingFile', destId, file.name);
+          if (check.exists) {
+            let wantsUpdate;
+            if (applyToAllChoice !== null) {
+              wantsUpdate = applyToAllChoice;
+            } else {
+              const multiple = files.length > 1;
+              wantsUpdate = confirm(
+                '「' + file.name + '」在這個資料夾裡已經有一份了。\n\n' +
+                '按「確定」：更新成新內容（其他地方指向這份檔案的捷徑會自動看到新版本）\n' +
+                '按「取消」：另存一份新的，不動原本那份' +
+                (multiple ? '\n\n（這批還有其他檔案的話，會沿用這次的選擇）' : '')
+              );
+              if (multiple) applyToAllChoice = wantsUpdate;
+            }
+            if (wantsUpdate) updateFileId = check.fileId;
+          }
+          await scriptRunPromise('uploadAndShortcut', base64, file.name, mimeType, destId, updateFileId);
+        } catch (err) {
+          alert('「' + file.name + '」上傳失敗：' + (err && err.message ? err.message : err));
+        }
+      }
+      google.script.run.withSuccessHandler(data => renderDesktop(data.items)).getDesktopItems(currentBrowseFolderId);
+    }
+
+    function readFileAsBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function scriptRunPromise(fnName, ...args) {
+      return new Promise((resolve, reject) => {
+        google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[fnName](...args);
+      });
+    }
+
+    function handleDrop(event) {
+      event.preventDefault();
+      const items = event.dataTransfer.items;
+      if (items && items.length) {
+        for (let i = 0; i < items.length; i++) {
+          const entry = items[i].webkitGetAsEntry && items[i].webkitGetAsEntry();
+          if (entry && entry.isDirectory) {
+            alert('目前不支援直接拖曳「資料夾」上傳，請把裡面的檔案個別拖進來。');
+            return;
+          }
+        }
+      }
+      const files = Array.from(event.dataTransfer.files || []);
+      if (!files.length) return;
+      pendingDropFiles = files;
+      openFolderModal();
+    }
+
+    // ---- Spotlight search ----
+    function openSpotlight() {
+      document.getElementById('spotlightModal').classList.add('open');
+      document.getElementById('spotlightInput').focus();
+    }
+    function closeSpotlight() { document.getElementById('spotlightModal').classList.remove('open'); }
+
+    let searchTimer = null;
+    function doSearch(keyword) {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        google.script.run.withSuccessHandler(renderSearchResults).searchDriveFiles(keyword);
+      }, 300); // debounce so we're not firing a GAS round trip per keystroke
+    }
+
+    function renderSearchResults(results) {
+      const container = document.getElementById('spotlightResults');
+      container.innerHTML = '';
+      results.forEach(r => {
+        const row = document.createElement('div');
+        row.className = 'tree-item';
+        row.innerHTML = r.name + ' <button style="float:right;" onclick="pinToDesktop(\'' + r.id + '\')">+加入桌面</button>';
+        container.appendChild(row);
+      });
+    }
+
+    function pinToDesktop(fileId) {
+      google.script.run.withSuccessHandler(refreshDesktop).createShortcutToDesktop(fileId, currentBrowseFolderId || currentFolderId);
+    }
+
+    // ---- Context menu ----
+    // Positions any popup at (x, y) but keeps it fully on-screen — measures
+    // its real rendered size first, then pulls it back from whichever edge
+    // it would otherwise overflow. Used by every menu/picker that opens at
+    // an arbitrary point (right-click position, long-press position, etc.)
+    // rather than a fixed, pre-known spot.
+    function clampPopupToViewport(el, x, y) {
+      const rect = el.getBoundingClientRect();
+      let left = x, top = y;
+      if (left + rect.width > window.innerWidth) left = window.innerWidth - rect.width - 8;
+      if (top + rect.height > window.innerHeight) top = window.innerHeight - rect.height - 8;
+      if (left < 8) left = 8;
+      if (top < 8) top = 8;
+      el.style.left = left + 'px';
+      el.style.top = top + 'px';
+    }
+
+    function showContextMenu(x, y, entries) {
+      const menu = document.getElementById('contextMenu');
+      menu.innerHTML = '';
+      entries.forEach(entry => {
+        if (entry.sep) { const sep = document.createElement('div'); sep.className = 'ctx-sep'; menu.appendChild(sep); return; }
+        const row = document.createElement('div');
+        row.className = 'ctx-item';
+        row.textContent = entry.label;
+        // stopPropagation is essential: without it this click bubbles to the
+        // document-level hideContextMenu listener AFTER entry.action() runs,
+        // which would instantly close a submenu that entry.action() just
+        // opened (e.g. "傳送到..."). Passing e through also lets an action
+        // that opens a submenu (showSendToMenu) position it at THIS click,
+        // not the original right-click/long-press position.
+        row.onclick = (e) => { e.stopPropagation(); hideContextMenu(); entry.action(e); };
+        menu.appendChild(row);
+      });
+      // Show it first so we can measure its real size, then clamp position
+      // to the viewport — otherwise a long-press near the bottom/edge of a
+      // phone screen opens a menu whose lower items are off-screen.
+      menu.style.display = 'block';
+      clampPopupToViewport(menu, x, y);
+    }
+    function hideContextMenu() { document.getElementById('contextMenu').style.display = 'none'; }
+
+    function showIconContextMenu(event, item) {
+      const openAction = item.type === 'folder' ? () => enterFolder(item) : () => openWindow(item.name, item.url);
+      const entries = [{ label: '開啟', action: openAction }];
+      if (item.type === 'drive') {
+        entries.push({ label: '在雲端硬碟中檢視', action: () => window.open('https://drive.google.com/file/d/' + item.targetId + '/view', '_blank') });
+        entries.push({ sep: true });
+        entries.push({ label: '更換圖示', action: () => openIconPicker(item) });
+        entries.push({ label: item.isShortcut === false ? '重新命名檔案' : '重新命名捷徑', action: () => renameItemPrompt(item) });
+        entries.push({ label: '移動到其他資料夾', action: () => openMoveFolderPicker(item) });
+        entries.push({
+          label: item.isShortcut === false ? '⚠️ 刪除檔案本體（會真的刪掉！）' : '移除捷徑 (不影響原始檔案)',
+          action: () => removeItemPrompt(item)
+        });
+        entries.push({ sep: true });
+        entries.push({ label: '✨ 問 Gemini', action: () => askInGemini(item) });
+        entries.push({ sep: true });
+        entries.push({ label: '📤 傳送到...', action: (e) => showSendToMenu(e || event, item) });
+      } else if (item.type === 'folder') {
+        entries.push({ label: '在雲端硬碟中檢視', action: () => window.open('https://drive.google.com/drive/folders/' + (item.targetId || item.id), '_blank') });
+        entries.push({ sep: true });
+        entries.push({ label: '更換圖示', action: () => openIconPicker(item) });
+        entries.push({ label: '移動到其他資料夾', action: () => openMoveFolderPicker(item) });
+        if (item.real) {
+          entries.push({ label: '重新命名資料夾', action: () => renameFolderPrompt(item) });
+          entries.push({ label: '刪除資料夾 (連同裡面的內容!)', action: () => removeFolderPrompt(item) });
+        } else {
+          entries.push({ label: '重新命名捷徑', action: () => renameItemPrompt(item) });
+          entries.push({ label: '移除捷徑 (不影響原始資料夾)', action: () => removeItemPrompt(item) });
+        }
+        entries.push({ sep: true });
+        entries.push({ label: '📤 傳送到...', action: (e) => showSendToMenu(e || event, item) });
+      } else {
+        entries.push({ sep: true });
+        entries.push({ label: '更換圖示', action: () => openIconPicker(item) });
+        if (item.removable !== false) {
+          entries.push({ label: '重新命名', action: () => renameAppLinkByItem(item) });
+          entries.push({ label: '移除', action: () => removeAppLinkByItem(item) });
+        }
+      }
+      showContextMenu(event.clientX, event.clientY, entries);
+    }
+
+    function renameFolderPrompt(item) {
+      const name = (prompt('新名稱：', item.name) || '').trim();
+      if (!name) return;
+      google.script.run.withSuccessHandler(refreshDesktop).renameFolder(item.id, name);
+    }
+
+    function removeFolderPrompt(item) {
+      if (!confirm('刪除資料夾「' + item.name + '」？這會把資料夾本身連同裡面所有檔案一起移到垃圾桶，不只是移除捷徑。')) return;
+      google.script.run.withSuccessHandler(refreshDesktop).removeFolder(item.id);
+    }
+
+    function renameItemPrompt(item) {
+      const name = (prompt('新名稱：', item.name) || '').trim();
+      if (!name) return;
+      google.script.run.withSuccessHandler(refreshDesktop).renameShortcut(item.id, name);
+    }
+
+    function removeItemPrompt(item) {
+      if (item.isShortcut === false) {
+        if (!confirm('⚠️「' + item.name + '」不是捷徑，是真正的檔案本體！\n\n這個操作會把檔案真的丟進雲端硬碟的垃圾桶，不是只拿掉桌面上的捷徑。\n\n確定要刪除嗎？')) return;
+      } else {
+        if (!confirm('移除「' + item.name + '」的桌面捷徑？(原始檔案不會被刪除)')) return;
+      }
+      google.script.run.withSuccessHandler(refreshDesktop).removeShortcut(item.id);
+    }
+
+    function renameAppLinkByItem(item) {
+      const name = (prompt('新名稱：', item.name) || '').trim();
+      if (!name) return;
+      const idx = parseInt(item.id.split('_').pop(), 10);
+      google.script.run.withSuccessHandler(refreshDesktop).renameAppLink(currentFolderId, idx, name);
+    }
+
+    function removeAppLinkByItem(item) {
+      const idx = parseInt(item.id.split('_').pop(), 10);
+      google.script.run
+        .withSuccessHandler(refreshDesktop)
+        .withFailureHandler(err => alert(err.message))
+        .removeAppLink(currentFolderId, idx);
+    }
+
+    // ---- App-link settings modal ----
+    const APP_LINK_PRESETS = [
+      { name: 'Gmail', url: 'https://mail.google.com/mail/u/0/#inbox', icon: 'gmail' },
+      { name: '日曆', url: 'https://calendar.google.com/calendar/u/0/r', icon: 'calendar' },
+      { name: '雲端硬碟', url: 'https://drive.google.com/drive/u/0/my-drive', icon: 'drive' },
+      { name: 'Keep', url: 'https://keep.google.com/u/0/', icon: 'keep' },
+      { name: '新增文件', url: 'https://docs.new', icon: 'docs' },
+      { name: '新增試算表', url: 'https://sheets.new', icon: 'sheets' },
+      { name: '新增簡報', url: 'https://slides.new', icon: 'slides' },
+      { name: '新增表單', url: 'https://forms.new', icon: 'forms' },
+      { name: 'Meet', url: 'https://meet.new', icon: 'meet.google.com' }
+    ];
+
+    function openAppLinkModal() {
+      document.getElementById('appLinkModal').style.display = 'block';
+      loadAppLinkList();
+      const quick = document.getElementById('appLinkQuickAdd');
+      quick.innerHTML = '';
+      APP_LINK_PRESETS.forEach(p => {
+        const img = document.createElement('img');
+        img.src = iconUrlFor({ type: 'app', icon: p.icon });
+        img.title = p.name;
+        img.onclick = () => addPresetAppLink(p);
+        quick.appendChild(img);
+      });
+    }
+    function closeAppLinkModal() { document.getElementById('appLinkModal').style.display = 'none'; }
+
+    function addPresetAppLink(preset) {
+      google.script.run.withSuccessHandler(() => {
+        loadAppLinkList(); refreshDesktop();
+      }).addAppLink(currentFolderId, preset.name, preset.url, preset.icon);
+    }
+
+    function loadAppLinkList() {
+      google.script.run.withSuccessHandler(links => {
+        const list = document.getElementById('appLinkList');
+        list.innerHTML = '';
+        links.forEach((l, i) => {
+          const row = document.createElement('div');
+          row.className = 'applink-row';
+          const removeBtn = l.default ? '' : '<button onclick="removeAppLinkAt(' + i + ')">移除</button>';
+          row.innerHTML = '<span>' + l.name + (l.default ? ' (預設)' : '') + '</span>' + removeBtn;
+          list.appendChild(row);
+        });
+      }).getAppLinks(currentFolderId);
+    }
+
+    function removeAppLinkAt(index) {
+      google.script.run
+        .withSuccessHandler(() => { loadAppLinkList(); refreshDesktop(); })
+        .withFailureHandler(err => alert(err.message))
+        .removeAppLink(currentFolderId, index);
+    }
+
+    function addAppLinkEntry() {
+      const name = document.getElementById('newAppName').value.trim();
+      const url = document.getElementById('newAppUrl').value.trim();
+      if (!name || !url) return;
+      google.script.run.withSuccessHandler(() => {
+        document.getElementById('newAppName').value = '';
+        document.getElementById('newAppUrl').value = '';
+        loadAppLinkList(); refreshDesktop();
+      }).addAppLink(currentFolderId, name, url);
+    }
+
+    // ---- Wallpaper ----
+    // Gradients are generated CSS, not hotlinked photos — guaranteed to render,
+    // no dependency on some external image URL still being valid.
+    const WALLPAPER_PRESETS = [
+      { name: '深夜藍', value: 'linear-gradient(135deg, #1e1e2e, #2b2d42, #0f3460)' },
+      { name: '日落橘', value: 'linear-gradient(135deg, #ff9a76, #ff6a88, #845ec2)' },
+      { name: '森林綠', value: 'linear-gradient(135deg, #134e5e, #71b280)' },
+      { name: '極光紫', value: 'linear-gradient(135deg, #667eea, #764ba2)' },
+      { name: '晨曦粉', value: 'linear-gradient(135deg, #fbc2eb, #a6c1ee)' },
+      { name: '石墨灰', value: 'linear-gradient(135deg, #232526, #414345)' }
+    ];
+
+    function openWallpaperModal() {
+      document.getElementById('wallpaperModal').style.display = 'block';
+      const presets = document.getElementById('wallpaperPresets');
+      presets.innerHTML = '';
+      WALLPAPER_PRESETS.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'swatch';
+        div.title = p.name;
+        div.style.background = p.value;
+        div.onclick = () => applyWallpaper(p.value);
+        presets.appendChild(div);
+      });
+    }
+    function closeWallpaperModal() { document.getElementById('wallpaperModal').style.display = 'none'; }
+
+    function applyWallpaperFromInput() {
+      const raw = document.getElementById('wallpaperUrlInput').value.trim();
+      if (!raw) return;
+      const lines = raw.split('\n').map(s => normalizeDriveUrl(s.trim())).filter(Boolean);
+      if (lines.length <= 1) { applyWallpaper(lines[0] || ''); return; }
+
+      closeWallpaperModal();
+      const checks = lines.map(url => new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => resolve(url);
+        img.onerror = () => resolve(null);
+        img.src = url;
+      }));
+      Promise.all(checks).then(results => {
+        const valid = results.filter(Boolean);
+        if (!valid.length) {
+          applyBackground(DEFAULT_BG);
+          google.script.run.saveBackgroundUrl(currentFolderId, '');
+          alert('清單裡的圖片全部載入失敗，已經退回預設底色。');
+          return;
+        }
+        const json = JSON.stringify(valid);
+        applyBackground(json);
+        google.script.run.saveBackgroundUrl(currentFolderId, json);
+        if (valid.length < lines.length) alert('清單裡有 ' + (lines.length - valid.length) + ' 張圖載入失敗，已經自動跳過，剩下 ' + valid.length + ' 張輪播。');
+      });
+    }
+
+    function applyWallpaper(value) {
+      closeWallpaperModal();
+      value = normalizeDriveUrl(value);
+      if (/^(linear|radial)-gradient\(/.test(value)) {
+        // A preset gradient is generated CSS, not an image — nothing to preload-check.
+        applyBackground(value);
+        google.script.run.saveBackgroundUrl(currentFolderId, value);
+        return;
+      }
+      const test = new Image();
+      test.onload = () => {
+        applyBackground(value);
+        google.script.run.saveBackgroundUrl(currentFolderId, value);
+      };
+      test.onerror = (e) => {
+        applyBackground(DEFAULT_BG);
+        google.script.run.saveBackgroundUrl(currentFolderId, '');
+        alert('這張圖片網址載入失敗，已經退回預設底色。');
+      };
+      test.src = value;
+    }
+
+    // ---- Background music ----
+    function openMusicModal() {
+      document.getElementById('musicModal').style.display = 'block';
+    }
+    function closeMusicModal() { document.getElementById('musicModal').style.display = 'none'; }
+
+    // ---- Drive-native music/photo players (open Drive's own preview page in
+    // a reused popup window — everything we tried to embed directly got
+    // blocked by Google's login-redirect wall, but plain navigation to
+    // Drive's own page has always worked fine, so let Drive's own player do
+    // the actual playback instead of us rebuilding one). ----
+    let driveMediaWindow = null; // only one Drive media popup exists at a time, across all categories
+
+    function openDriveMediaWindow(fileId, windowName, w, h) {
+      const url = 'https://drive.google.com/file/d/' + fileId + '/view';
+      if (driveMediaWindow && !driveMediaWindow.closed) driveMediaWindow.close();
+      driveMediaWindow = window.open(url, 'driveMediaPlayer', 'width=' + w + ',height=' + h);
+      if (driveMediaWindow) driveMediaWindow.focus();
+    }
+
+    function closeDriveMediaWindow() {
+      if (driveMediaWindow && !driveMediaWindow.closed) driveMediaWindow.close();
+      driveMediaWindow = null;
+    }
+
+    // When the desktop tab itself closes, proactively close the Drive
+    // player/viewer popup instead of leaving it as an orphan.
+    window.addEventListener('beforeunload', closeDriveMediaWindow);
+
+    let driveMusicFiles = [];
+    let driveMusicIndex = -1;
+
+    function openMusicPlayerModal() {
+      document.getElementById('driveMusicModal').style.display = 'block';
+      const list = document.getElementById('driveMusicList');
+      list.innerHTML = '載入中...';
+      google.script.run
+        .withSuccessHandler(files => {
+          driveMusicFiles = files;
+          driveMusicIndex = -1;
+          renderDriveMusicList();
+        })
+        .withFailureHandler(err => { list.textContent = '載入失敗：' + err.message; })
+        .listMediaFiles(currentBrowseFolderId || currentFolderId, 'audio/');
+    }
+
+    function renderDriveMusicList() {
+      const list = document.getElementById('driveMusicList');
+      list.innerHTML = '';
+      if (!driveMusicFiles.length) { list.textContent = '這個資料夾裡沒有音檔。'; return; }
+      driveMusicFiles.forEach((f, i) => {
+        const row = document.createElement('div');
+        row.className = 'tree-item';
+        row.textContent = (i === driveMusicIndex ? '▶️ ' : '🎵 ') + f.name;
+        row.onclick = () => playDriveMusicAt(i);
+        list.appendChild(row);
+      });
+      const nav = document.createElement('div');
+      nav.className = 'modal-actions';
+      nav.style.marginTop = '10px';
+      nav.innerHTML = '<button onclick="prevDriveMusic()">◀ 上一首</button><button onclick="nextDriveMusic()">下一首 ▶</button>';
+      list.appendChild(nav);
+    }
+
+    function playDriveMusicAt(i) {
+      driveMusicIndex = i;
+      openDriveMediaWindow(driveMusicFiles[i].id, 'driveMusicPlayer', 520, 420);
+      renderDriveMusicList();
+    }
+    function nextDriveMusic() {
+      if (!driveMusicFiles.length) return;
+      playDriveMusicAt((driveMusicIndex + 1 + driveMusicFiles.length) % driveMusicFiles.length);
+    }
+    function prevDriveMusic() {
+      if (!driveMusicFiles.length) return;
+      playDriveMusicAt((driveMusicIndex - 1 + driveMusicFiles.length) % driveMusicFiles.length);
+    }
+
+    function closeDriveMusicModal() {
+      document.getElementById('driveMusicModal').style.display = 'none';
+      closeDriveMediaWindow();
+    }
+
+    let drivePhotoFiles = [];
+    let drivePhotoIndex = -1;
+
+    function openPhotoViewerModal() {
+      document.getElementById('drivePhotoModal').style.display = 'block';
+      const list = document.getElementById('drivePhotoList');
+      list.innerHTML = '載入中...';
+      google.script.run
+        .withSuccessHandler(files => {
+          drivePhotoFiles = files;
+          drivePhotoIndex = -1;
+          renderDrivePhotoList();
+        })
+        .withFailureHandler(err => { list.textContent = '載入失敗：' + err.message; })
+        .listMediaFiles(currentBrowseFolderId || currentFolderId, 'image/');
+    }
+
+    function renderDrivePhotoList() {
+      const list = document.getElementById('drivePhotoList');
+      list.innerHTML = '';
+      if (!drivePhotoFiles.length) { list.textContent = '這個資料夾裡沒有圖片。'; return; }
+      drivePhotoFiles.forEach((f, i) => {
+        const row = document.createElement('div');
+        row.className = 'tree-item';
+        row.textContent = (i === drivePhotoIndex ? '▶️ ' : '🖼️ ') + f.name;
+        row.onclick = () => showDrivePhotoAt(i);
+        list.appendChild(row);
+      });
+      const nav = document.createElement('div');
+      nav.className = 'modal-actions';
+      nav.style.marginTop = '10px';
+      nav.innerHTML = '<button onclick="prevDrivePhoto()">◀ 上一張</button><button onclick="nextDrivePhoto()">下一張 ▶</button>';
+      list.appendChild(nav);
+    }
+
+    function showDrivePhotoAt(i) {
+      drivePhotoIndex = i;
+      openDriveMediaWindow(drivePhotoFiles[i].id, 'drivePhotoViewer', 800, 700);
+      renderDrivePhotoList();
+    }
+    function nextDrivePhoto() {
+      if (!drivePhotoFiles.length) return;
+      showDrivePhotoAt((drivePhotoIndex + 1 + drivePhotoFiles.length) % drivePhotoFiles.length);
+    }
+    function prevDrivePhoto() {
+      if (!drivePhotoFiles.length) return;
+      showDrivePhotoAt((drivePhotoIndex - 1 + drivePhotoFiles.length) % drivePhotoFiles.length);
+    }
+
+    function closeDrivePhotoModal() {
+      document.getElementById('drivePhotoModal').style.display = 'none';
+      closeDriveMediaWindow();
+    }
+
+    let driveVideoFiles = [];
+    let driveVideoIndex = -1;
+
+    function openVideoPlayerModal() {
+      document.getElementById('driveVideoModal').style.display = 'block';
+      const list = document.getElementById('driveVideoList');
+      list.innerHTML = '載入中...';
+      google.script.run
+        .withSuccessHandler(files => {
+          driveVideoFiles = files;
+          driveVideoIndex = -1;
+          renderDriveVideoList();
+        })
+        .withFailureHandler(err => { list.textContent = '載入失敗：' + err.message; })
+        .listMediaFiles(currentBrowseFolderId || currentFolderId, 'video/');
+    }
+
+    function renderDriveVideoList() {
+      const list = document.getElementById('driveVideoList');
+      list.innerHTML = '';
+      if (!driveVideoFiles.length) { list.textContent = '這個資料夾裡沒有影片。'; return; }
+      driveVideoFiles.forEach((f, i) => {
+        const row = document.createElement('div');
+        row.className = 'tree-item';
+        row.textContent = (i === driveVideoIndex ? '▶️ ' : '🎬 ') + f.name;
+        row.onclick = () => playDriveVideoAt(i);
+        list.appendChild(row);
+      });
+      const nav = document.createElement('div');
+      nav.className = 'modal-actions';
+      nav.style.marginTop = '10px';
+      nav.innerHTML = '<button onclick="prevDriveVideo()">◀ 上一部</button><button onclick="nextDriveVideo()">下一部 ▶</button>';
+      list.appendChild(nav);
+    }
+
+    function playDriveVideoAt(i) {
+      driveVideoIndex = i;
+      openDriveMediaWindow(driveVideoFiles[i].id, 'driveVideoPlayer', 900, 650);
+      renderDriveVideoList();
+    }
+    function nextDriveVideo() {
+      if (!driveVideoFiles.length) return;
+      playDriveVideoAt((driveVideoIndex + 1 + driveVideoFiles.length) % driveVideoFiles.length);
+    }
+    function prevDriveVideo() {
+      if (!driveVideoFiles.length) return;
+      playDriveVideoAt((driveVideoIndex - 1 + driveVideoFiles.length) % driveVideoFiles.length);
+    }
+
+    function closeDriveVideoModal() {
+      document.getElementById('driveVideoModal').style.display = 'none';
+      closeDriveMediaWindow();
+    }
+
+    // Recognizes the URL you get from Drive's "取得連結"/"複製連結" button and
+    // converts it to our own web app's file-proxy URL — Google's own
+    // download endpoint works fine when you navigate to it directly, but
+    // gets blocked/redirected when a page tries to embed it as an <img> or
+    // <audio> source. Routing through our own URL sidesteps that entirely.
+    // A Drive "取得連結"/"複製連結" share link cannot be used directly here —
+    // Google's own download endpoint blocks embedded use, and proxying it
+    // through our own web app URL doesn't work either: a sub-resource
+    // request back into our own /exec URL gets redirected to a Google login
+    // page by Google's own infrastructure, which then hits a CORS wall.
+    // This is a structural limitation of Apps Script web apps, not something
+    // fixable in this code — so this is left as a plain pass-through, and
+    // the preload-check below will report the failure clearly rather than
+    // silently doing nothing.
+    function normalizeDriveUrl(input) {
+      return input;
+    }
+
+    function checkAudioUrl(url, timeoutMs) {
+      return new Promise(resolve => {
+        const a = new Audio();
+        let done = false;
+        const finish = ok => { if (!done) { done = true; resolve(ok ? url : null); } };
+        a.oncanplaythrough = () => finish(true);
+        a.onerror = () => finish(false);
+        setTimeout(() => finish(false), timeoutMs || 6000);
+        a.src = url;
+      });
+    }
+
+    function applyMusicFromInput() {
+      const raw = document.getElementById('musicUrlInput').value.trim();
+      if (!raw) return;
+      const currentVol = parseFloat(document.getElementById('volumeRange').value);
+      const lines = raw.split('\n').map(s => normalizeDriveUrl(s.trim())).filter(Boolean);
+
+      if (lines.length <= 1) {
+        const value = lines[0] || '';
+        setupMusic(value, currentVol);
+        google.script.run.saveMusicUrl(currentFolderId, value);
+        closeMusicModal();
+        return;
+      }
+
+      closeMusicModal();
+      Promise.all(lines.map(u => checkAudioUrl(u, 6000))).then(results => {
+        const valid = results.filter(Boolean);
+        if (!valid.length) { alert('清單裡的音檔全部載入失敗。'); return; }
+        const value = JSON.stringify(valid);
+        setupMusic(value, currentVol);
+        google.script.run.saveMusicUrl(currentFolderId, value);
+        if (valid.length < lines.length) alert('清單裡有 ' + (lines.length - valid.length) + ' 首載入失敗，已經自動跳過，剩下 ' + valid.length + ' 首輪播。');
+      });
+    }
+
+    function clearMusic() {
+      document.getElementById('musicUrlInput').value = '';
+      setupMusic('');
+      google.script.run.saveMusicUrl(currentFolderId, '');
+      closeMusicModal();
+    }
+
+    // ---- Per-icon custom image ----
+    let iconPickerTargetId = null;
+
+    // Inline SVG data URIs — generated locally, so unlike a hotlinked icon
+    // pack, there's no external URL that could 404 or disappear.
+    function svgIcon(bg, emoji) {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">' +
+        '<rect width="64" height="64" rx="14" fill="' + bg + '"/>' +
+        '<text x="32" y="42" font-size="30" text-anchor="middle">' + emoji + '</text></svg>';
+      return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+    }
+
+    // Geometric plus sign (two rectangles), not a text glyph — text/emoji
+    // rendering isn't always optically centered the same way an <img> is,
+    // which is what made the sidebar's "+" look slightly off.
+    function plusIcon(bg) {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">' +
+        '<rect width="64" height="64" rx="14" fill="' + bg + '"/>' +
+        '<rect x="28" y="16" width="8" height="32" rx="2" fill="white"/>' +
+        '<rect x="16" y="28" width="32" height="8" rx="2" fill="white"/></svg>';
+      return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+    }
+
+    const ICON_PRESETS = [
+      svgIcon('#4285F4', '📁'),
+      svgIcon('#EA4335', '📄'),
+      svgIcon('#34A853', '📊'),
+      svgIcon('#FBBC05', '🖼️'),
+      svgIcon('#8E44AD', '⭐'),
+      svgIcon('#16A085', '☁️'),
+      svgIcon('#E67E22', '📝'),
+      svgIcon('#2C3E50', '🔗')
+    ];
+
+    function openIconPicker(item) {
+      iconPickerTargetId = item.id;
+      document.getElementById('iconUrlInput').value = '';
+      const presets = document.getElementById('iconPresets');
+      presets.innerHTML = '';
+      ICON_PRESETS.forEach(dataUrl => {
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.onclick = () => applyIconUrl(dataUrl);
+        presets.appendChild(img);
+      });
+      document.getElementById('iconPickerModal').style.display = 'block';
+    }
+    function closeIconPicker() { document.getElementById('iconPickerModal').style.display = 'none'; }
+
+    function applyIconFromInput() {
+      const url = document.getElementById('iconUrlInput').value.trim();
+      if (!url) return;
+      applyIconUrl(normalizeDriveUrl(url));
+    }
+
+    function applyIconUrl(url) {
+      if (!iconPickerTargetId) return;
+      google.script.run.withSuccessHandler(() => {
+        closeIconPicker();
+        refreshDesktop();
+      }).saveIconImage(iconPickerTargetId, url);
+    }
+  </script>
+</body>
+</html>
