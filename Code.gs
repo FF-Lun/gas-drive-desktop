@@ -598,7 +598,7 @@ function doGet() {
   template.initialData = JSON.stringify(data).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   template.desktopList = JSON.stringify(desktops).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   return template.evaluate()
-    .setTitle('雲端桌面')
+    .setTitle(data.tabTitle || '雲端桌面')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
