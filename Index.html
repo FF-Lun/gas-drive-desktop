@@ -287,7 +287,7 @@
          lists, etc.) was a fixed 380–420px wide — wider than some phones'
          entire screen. Cap to the viewport with a margin instead. */
       #folderModal, #spotlightModal, #appLinkModal, #wallpaperModal,
-      #iconPickerModal, #musicModal, #driveMusicModal, #drivePhotoModal,
+      #iconPickerModal, #musicModal, #launchSoundModal, #driveMusicModal, #drivePhotoModal,
       #driveVideoModal {
         width: 90vw; max-width: 400px;
       }
@@ -335,13 +335,13 @@
     .applink-row button { margin-left: 6px; }
     #appLinkModal input { padding: 6px; border-radius: 4px; border: none; margin-right: 4px; }
 
-    #wallpaperModal, #iconPickerModal, #musicModal, #driveMusicModal, #drivePhotoModal, #driveVideoModal {
+    #wallpaperModal, #iconPickerModal, #musicModal, #launchSoundModal, #driveMusicModal, #drivePhotoModal, #driveVideoModal {
       display: none; position: fixed; top: 20%; left: 50%; transform: translateX(-50%);
       width: 380px; background: #2b2d42; color: white; border-radius: 10px; padding: 16px;
       z-index: 2000; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
     }
     #driveMusicModal, #drivePhotoModal, #driveVideoModal { max-height: 70vh; overflow-y: auto; }
-    #wallpaperModal input, #iconPickerModal input, #musicModal input,
+    #wallpaperModal input, #iconPickerModal input, #musicModal input, #launchSoundModal input,
     #wallpaperModal textarea, #musicModal textarea {
       width: 100%; padding: 6px; border-radius: 4px; border: none; margin: 8px 0;
       font-family: inherit; font-size: 13px; resize: vertical;
@@ -487,6 +487,17 @@
     </div>
   </div>
 
+  <div id="launchSoundModal">
+    <h4 style="margin:0 0 10px;">開啟音效設定</h4>
+    <p class="modal-hint">請貼「音效檔案本身」的直接網址（通常以 .mp3 / .ogg / .wav 結尾）。這個音效只屬於這一個圖示——點擊它開啟時會播放，其他圖示不受影響。跟背景音樂是獨立的一軌，不會互相打斷。</p>
+    <input id="launchSoundUrlInput" placeholder="貼上音效網址 (https://...mp3)">
+    <div class="modal-actions">
+      <button onclick="clearLaunchSound()">清除</button>
+      <button onclick="closeLaunchSoundModal()">取消</button>
+      <button onclick="applyLaunchSoundFromInput()">套用</button>
+    </div>
+  </div>
+
   <div id="driveMusicModal">
     <h4 style="margin:0 0 10px;">雲端硬碟音樂播放器</h4>
     <p class="modal-hint">列出目前這個資料夾裡的音檔。點一首會在一個小視窗裡用 Drive 自己的播放器打開——放完要手動點下一首，不會自動接歌（跨視窗沒辦法互相通知）。這個小視窗可以用 Chrome 的分割視窗功能跟桌面並排。</p>
@@ -617,6 +628,33 @@
     }
 
     let musicPlaying = false;
+
+    // A brand-new Audio() per play, not the shared #musicAudio element — so
+    // this can overlap or play alongside background music freely, and rapid
+    // clicks just layer short sounds instead of cutting each other off.
+    // Each item carries its own sound (item.sound); items with none set
+    // just stay silent.
+    let activeLaunchAudio = null; // the one launch sound currently playing, if any
+
+    function playLaunchSound(item) {
+      const url = item && item.sound;
+      if (!url) return;
+      try {
+        // Fully release the previous sound's connection, not just pause it —
+        // pause()/currentTime=0 alone leaves an in-flight network fetch open,
+        // which piles up fast with repeated clicks and can exhaust the
+        // browser's connection limit (ERR_INSUFFICIENT_RESOURCES).
+        if (activeLaunchAudio) {
+          activeLaunchAudio.pause();
+          activeLaunchAudio.removeAttribute('src');
+          activeLaunchAudio.load();
+        }
+        const a = new Audio(url);
+        a.volume = 0.6;
+        activeLaunchAudio = a;
+        a.play().catch(() => {});
+      } catch (e) { /* bad URL or unsupported format — fail silently, it's just a click sound */ }
+    }
     let currentMusicValue = ''; // raw stored value (URL or JSON playlist array) — used to prefill the music textarea
 
     // Both wallpaper and music store either a single URL, a JSON array of
@@ -1349,6 +1387,7 @@
         div.style.pointerEvents = '';
         if (dist < 8) {
           if (item.type === 'folder') enterFolder(item); else openWindow(item.name, item.url);
+          playLaunchSound(item);
           if (isMobileLayout() && sidebarState !== 'peek') cycleSidebarState('peek');
           return;
         }
@@ -1476,6 +1515,7 @@
           if (!item) return;
           if (item.type === 'folder') enterFolder(item);
           else openWindow(item.name, item.url);
+          playLaunchSound(item);
           return;
         }
 
@@ -1803,12 +1843,13 @@
     function hideContextMenu() { document.getElementById('contextMenu').style.display = 'none'; }
 
     function showIconContextMenu(event, item) {
-      const openAction = item.type === 'folder' ? () => enterFolder(item) : () => openWindow(item.name, item.url);
+      const openAction = item.type === 'folder' ? () => { enterFolder(item); playLaunchSound(item); } : () => { openWindow(item.name, item.url); playLaunchSound(item); };
       const entries = [{ label: '開啟', action: openAction }];
       if (item.type === 'drive') {
         entries.push({ label: '在雲端硬碟中檢視', action: () => window.open('https://drive.google.com/file/d/' + item.targetId + '/view', '_blank') });
         entries.push({ sep: true });
         entries.push({ label: '更換圖示', action: () => openIconPicker(item) });
+        entries.push({ label: '🔊 設定開啟音效', action: () => openLaunchSoundModal(item) });
         entries.push({ label: item.isShortcut === false ? '重新命名檔案' : '重新命名捷徑', action: () => renameItemPrompt(item) });
         entries.push({ label: '移動到其他資料夾', action: () => openMoveFolderPicker(item) });
         entries.push({
@@ -1823,6 +1864,7 @@
         entries.push({ label: '在雲端硬碟中檢視', action: () => window.open('https://drive.google.com/drive/folders/' + (item.targetId || item.id), '_blank') });
         entries.push({ sep: true });
         entries.push({ label: '更換圖示', action: () => openIconPicker(item) });
+        entries.push({ label: '🔊 設定開啟音效', action: () => openLaunchSoundModal(item) });
         entries.push({ label: '移動到其他資料夾', action: () => openMoveFolderPicker(item) });
         if (item.real) {
           entries.push({ label: '重新命名資料夾', action: () => renameFolderPrompt(item) });
@@ -1836,6 +1878,7 @@
       } else {
         entries.push({ sep: true });
         entries.push({ label: '更換圖示', action: () => openIconPicker(item) });
+        entries.push({ label: '🔊 設定開啟音效', action: () => openLaunchSoundModal(item) });
         if (item.removable !== false) {
           entries.push({ label: '重新命名', action: () => renameAppLinkByItem(item) });
           entries.push({ label: '移除', action: () => removeAppLinkByItem(item) });
@@ -2035,6 +2078,51 @@
       document.getElementById('musicUrlInput').value = storedValueToTextareaText(currentMusicValue);
     }
     function closeMusicModal() { document.getElementById('musicModal').style.display = 'none'; }
+
+    let soundPickerTargetId = null;
+
+    function openLaunchSoundModal(item) {
+      soundPickerTargetId = item.id;
+      document.getElementById('launchSoundModal').style.display = 'block';
+      document.getElementById('launchSoundUrlInput').value = item.sound || '';
+    }
+    function closeLaunchSoundModal() {
+      document.getElementById('launchSoundModal').style.display = 'none';
+      soundPickerTargetId = null;
+    }
+
+    function applyLaunchSoundFromInput() {
+      const raw = document.getElementById('launchSoundUrlInput').value.trim();
+      if (!soundPickerTargetId) return;
+      if (!raw) { clearLaunchSound(); return; }
+      const targetId = soundPickerTargetId;
+      google.script.run
+        .withSuccessHandler(() => {
+          // Patch the in-memory item right away — the very next click already
+          // sees the new sound, instead of depending on refreshDesktop's full
+          // round trip to land first.
+          if (itemsById[targetId]) itemsById[targetId].sound = raw;
+          if (appLinksById[targetId]) appLinksById[targetId].sound = raw;
+          refreshDesktop();
+        })
+        .withFailureHandler(err => alert('儲存失敗：' + err.message))
+        .saveIconSound(targetId, raw);
+      closeLaunchSoundModal();
+    }
+
+    function clearLaunchSound() {
+      if (!soundPickerTargetId) return;
+      const targetId = soundPickerTargetId;
+      google.script.run
+        .withSuccessHandler(() => {
+          if (itemsById[targetId]) itemsById[targetId].sound = null;
+          if (appLinksById[targetId]) appLinksById[targetId].sound = null;
+          refreshDesktop();
+        })
+        .withFailureHandler(err => alert('清除失敗：' + err.message))
+        .saveIconSound(targetId, '');
+      closeLaunchSoundModal();
+    }
 
     // ---- Drive-native music/photo players (open Drive's own preview page in
     // a reused popup window — everything we tried to embed directly got
