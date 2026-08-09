@@ -172,6 +172,7 @@ function getDesktopItems(browseFolderId) {
       name: folder.getName(),
       real: true,
       iconOverride: meta.icon || null,
+      sound: meta.sound || null,
       mobileOrder: meta.mobileOrder != null ? meta.mobileOrder : null,
       x: pos.x,
       y: pos.y
@@ -201,6 +202,7 @@ function getDesktopItems(browseFolderId) {
         name: file.getName(),
         real: false,
         iconOverride: meta.icon || null,
+        sound: meta.sound || null,
         mobileOrder: meta.mobileOrder != null ? meta.mobileOrder : null,
         x: x, y: y
       });
@@ -216,6 +218,7 @@ function getDesktopItems(browseFolderId) {
       url: getSanitizedUrl(targetMime, targetId),
       isShortcut: isShortcut,
       iconOverride: meta.icon || null,
+      sound: meta.sound || null,
       mobileOrder: meta.mobileOrder != null ? meta.mobileOrder : null,
       x: x, y: y
     });
@@ -235,6 +238,7 @@ function getDesktopItems(browseFolderId) {
       url: link.url,
       icon: link.icon,
       iconOverride: meta.icon || null,
+      sound: meta.sound || null,
       removable: !link.default
     };
   });
@@ -401,6 +405,16 @@ function saveMobileOrder(orderedIds) {
 function saveIconImage(itemId, url) {
   const meta = getIconMeta(itemId);
   meta.icon = url;
+  PropertiesService.getUserProperties().setProperty(itemId, JSON.stringify(meta));
+  return { status: "success" };
+}
+
+// A per-item launch sound — same generic itemId-keyed meta blob as
+// saveIconImage, just a different field, so it works identically for
+// desktop icons and sidebar app links.
+function saveIconSound(itemId, url) {
+  const meta = getIconMeta(itemId);
+  if (url) meta.sound = url; else delete meta.sound;
   PropertiesService.getUserProperties().setProperty(itemId, JSON.stringify(meta));
   return { status: "success" };
 }
