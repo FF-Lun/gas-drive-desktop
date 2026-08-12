@@ -24,6 +24,7 @@
     }
     .icon:hover { background: rgba(255,255,255,0.18); }
     .icon.drop-target { outline: 2px solid white; background: rgba(255,255,255,0.15); }
+    .icon.selected { outline: 2px solid #5ee7ff; background: rgba(94,231,255,0.18); border-radius: 10px; }
 
     #desktop.mobile-mode {
       display: grid; grid-template-columns: repeat(3, 1fr);
@@ -112,6 +113,10 @@
     #drawerBackdrop { display: none; }
     #drawerBackdrop.show {
       display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 480;
+    }
+    #marqueeBox {
+      display: none; position: fixed; border: 1.5px solid #5ee7ff;
+      background: rgba(94,231,255,0.15); pointer-events: none; z-index: 400;
     }
 
     .icon { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
@@ -375,6 +380,7 @@
     <span id="folderBreadcrumbTrail"></span>
   </div>
   <div id="desktop"></div>
+  <div id="marqueeBox"></div>
 
   <div id="clockWidget" onclick="event.stopPropagation(); toggleMiniCalendar()">
     <div id="clockTime">00:00</div>
@@ -418,14 +424,18 @@
     <div id="folderTree"></div>
     <div class="modal-actions">
       <button onclick="closeFolderModal()">取消</button>
-      <button onclick="confirmFolderTarget()">選這裡</button>
+      <button id="saveToCurrentDesktopBtn" onclick="confirmSaveToCurrentDesktop()" style="display:none;">存目前桌面</button>
+      <button onclick="confirmFolderTarget()">存檔</button>
     </div>
   </div>
 
   <div id="spotlightModal">
     <input id="spotlightInput" oninput="doSearch(this.value)" placeholder="搜尋雲端硬碟...">
     <div id="spotlightResults"></div>
-    <div class="modal-actions"><button onclick="closeSpotlight()">關閉</button></div>
+    <div class="modal-actions">
+      <button onclick="closeSpotlight()">關閉</button>
+      <button id="pinSelectedBtn" onclick="pinSelectedToDesktop()" style="display:none;">+ 加入選取的項目</button>
+    </div>
   </div>
 
   <div id="contextMenu"></div>
@@ -529,6 +539,25 @@
     let currentDesktopIsShared = !!initialData.isSharedDesktop;
     let sidebarState = initialData.sidebarState || 'icons'; // 'peek' | 'icons' | 'full'
     let itemsById = {};
+    let selectedItemIds = new Set(); // multi-selected desktop icons (Ctrl/Cmd+click) — sidebar icons don't participate
+
+    function toggleSelection(id) {
+      if (selectedItemIds.has(id)) selectedItemIds.delete(id);
+      else selectedItemIds.add(id);
+      paintSelection();
+    }
+
+    function clearSelection() {
+      if (!selectedItemIds.size) return;
+      selectedItemIds.clear();
+      paintSelection();
+    }
+
+    function paintSelection() {
+      document.querySelectorAll('#desktop .icon').forEach(el => {
+        el.classList.toggle('selected', selectedItemIds.has(el.id));
+      });
+    }
     let appLinksById = {};
     let browseStack = [];          // {id, name} for each ancestor level, for the folder path bar
     let currentBrowseFolderId = null; // null = desktop root
@@ -983,11 +1012,62 @@
       document.addEventListener('click', closeMiniCalendar);
 
       const desktopEl = document.getElementById('desktop');
+      let justMarqueeSelected = false; // suppresses the click-to-clear that fires right after a marquee drag
+      desktopEl.addEventListener('click', (e) => {
+        if (justMarqueeSelected) { justMarqueeSelected = false; return; }
+        if (e.target.id === 'desktop') clearSelection();
+      });
       desktopEl.oncontextmenu = (e) => {
         if (e.target.id !== 'desktop') return; // an icon's own handler already dealt with it
         e.preventDefault();
         showContextMenu(e.clientX, e.clientY, desktopMenuEntries());
       };
+
+      // Rubber-band select: drag from empty desktop space to select every
+      // icon the box touches. Mouse/pen only — touch keeps its existing
+      // long-press-for-menu behavior below, so this is skipped for touch.
+      let marqueeStart = null;
+      let marqueeAdditive = false;
+      const marqueeBox = document.getElementById('marqueeBox');
+      desktopEl.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'touch' || e.target.id !== 'desktop' || e.button !== 0) return;
+        marqueeStart = { x: e.clientX, y: e.clientY };
+        marqueeAdditive = e.ctrlKey || e.metaKey;
+        desktopEl.setPointerCapture(e.pointerId);
+      });
+      desktopEl.addEventListener('pointermove', (e) => {
+        if (!marqueeStart) return;
+        const dist = Math.hypot(e.clientX - marqueeStart.x, e.clientY - marqueeStart.y);
+        if (dist < 8) return;
+        const left = Math.min(marqueeStart.x, e.clientX);
+        const top = Math.min(marqueeStart.y, e.clientY);
+        marqueeBox.style.left = left + 'px';
+        marqueeBox.style.top = top + 'px';
+        marqueeBox.style.width = Math.abs(e.clientX - marqueeStart.x) + 'px';
+        marqueeBox.style.height = Math.abs(e.clientY - marqueeStart.y) + 'px';
+        marqueeBox.style.display = 'block';
+      });
+      desktopEl.addEventListener('pointerup', (e) => {
+        if (!marqueeStart) return;
+        desktopEl.releasePointerCapture(e.pointerId);
+        marqueeBox.style.display = 'none';
+        const dist = Math.hypot(e.clientX - marqueeStart.x, e.clientY - marqueeStart.y);
+        if (dist < 8) { marqueeStart = null; return; } // too small to count as a drag — the click handler above handles it as a plain click
+        const rectLeft = Math.min(marqueeStart.x, e.clientX);
+        const rectTop = Math.min(marqueeStart.y, e.clientY);
+        const rectRight = Math.max(marqueeStart.x, e.clientX);
+        const rectBottom = Math.max(marqueeStart.y, e.clientY);
+        const hits = [];
+        document.querySelectorAll('#desktop .icon').forEach(el => {
+          const r = el.getBoundingClientRect();
+          if (!(r.right < rectLeft || r.left > rectRight || r.bottom < rectTop || r.top > rectBottom)) hits.push(el.id);
+        });
+        if (!marqueeAdditive) selectedItemIds.clear();
+        hits.forEach(id => selectedItemIds.add(id));
+        paintSelection();
+        justMarqueeSelected = true;
+        marqueeStart = null;
+      });
 
       // Touch has no right-click — long-press on empty space opens the same menu.
       let desktopLongPressTimer = null;
@@ -1314,6 +1394,12 @@
         container.appendChild(div);
         makeDraggable(div);
       });
+
+      // Item ids are stable across a refresh, but drop any selected id that
+      // no longer exists (e.g. it was just deleted/moved out) before
+      // repainting the highlight on the freshly-created divs.
+      selectedItemIds.forEach(id => { if (!itemsById[id]) selectedItemIds.delete(id); });
+      paintSelection();
     }
 
     // Personal-service icons live in the fixed sidebar dock, separate from
@@ -1458,6 +1544,7 @@
     function makeDraggable(div) {
       let dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
       let longPressTimer = null, longPressFired = false;
+      let currentDropTargetEl = null; // the folder icon currently highlighted as a drop target, if any
 
       div.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return; // left button / primary touch contact only
@@ -1499,6 +1586,24 @@
         } else {
           div.style.left = (origLeft + (e.clientX - startX)) + 'px';
           div.style.top = (origTop + (e.clientY - startY)) + 'px';
+
+          // While actually dragging (not just a click), check what's under
+          // the pointer — if it's another folder icon, highlight it as a
+          // drop target so dropping there moves this item inside it.
+          if (dist > 8) {
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            const iconEl = under ? under.closest('.icon') : null;
+            const targetItem = (iconEl && iconEl !== div) ? itemsById[iconEl.id] : null;
+            const isFolderTarget = targetItem && targetItem.type === 'folder';
+            if (currentDropTargetEl && currentDropTargetEl !== iconEl) {
+              currentDropTargetEl.classList.remove('drop-target');
+              currentDropTargetEl = null;
+            }
+            if (isFolderTarget && currentDropTargetEl !== iconEl) {
+              iconEl.classList.add('drop-target');
+              currentDropTargetEl = iconEl;
+            }
+          }
         }
       });
 
@@ -1513,6 +1618,8 @@
         if (dist < 8) {
           const item = itemsById[div.id];
           if (!item) return;
+          if (e.ctrlKey || e.metaKey) { toggleSelection(div.id); return; }
+          if (selectedItemIds.size) { clearSelection(); return; } // plain click elsewhere just clears an active selection
           if (item.type === 'folder') enterFolder(item);
           else openWindow(item.name, item.url);
           playLaunchSound(item);
@@ -1523,6 +1630,19 @@
           div.style.position = '';
           div.style.zIndex = '';
           reorderMobileIcon(div, e.clientX, e.clientY);
+        } else if (currentDropTargetEl) {
+          // Dropped onto a folder icon — move this item inside it instead of
+          // just repositioning it on the desktop.
+          const targetItem = itemsById[currentDropTargetEl.id];
+          currentDropTargetEl.classList.remove('drop-target');
+          currentDropTargetEl = null;
+          const item = itemsById[div.id];
+          if (targetItem && item) {
+            google.script.run
+              .withSuccessHandler(refreshDesktop)
+              .withFailureHandler(err => alert('移動失敗：' + (err && err.message ? err.message : err)))
+              .moveItemToFolder(item.id, targetItem.targetId || targetItem.id, !!item.real);
+          }
         } else {
           google.script.run.saveIconPosition(div.id, parseFloat(div.style.left) || 0, parseFloat(div.style.top) || 0);
         }
@@ -1644,12 +1764,13 @@
     }
 
     // ---- Folder tree modal — lazy: only fetches children when a folder is clicked ----
-    let folderPickerMode = 'upload'; // 'upload' | 'move'
+    let folderPickerMode = 'upload'; // 'upload' | 'move' | 'move-batch'
     let moveTargetItem = null;
 
     function openFolderModal() {
       folderPickerMode = 'upload';
       document.getElementById('folderModal').classList.add('open');
+      document.getElementById('saveToCurrentDesktopBtn').style.display = '';
       const tree = document.getElementById('folderTree');
       tree.innerHTML = '';
       loadFolderLevel(null, tree);
@@ -1660,6 +1781,20 @@
       moveTargetItem = item;
       pendingDropTarget = {};
       document.getElementById('folderModal').classList.add('open');
+      document.getElementById('saveToCurrentDesktopBtn').style.display = 'none';
+      const tree = document.getElementById('folderTree');
+      tree.innerHTML = '';
+      loadFolderLevel(null, tree);
+    }
+
+    // Same tree picker, but moves every currently-selected icon at once
+    // instead of a single item.
+    function openMoveFolderPickerBatch() {
+      if (!selectedItemIds.size) return;
+      folderPickerMode = 'move-batch';
+      pendingDropTarget = {};
+      document.getElementById('folderModal').classList.add('open');
+      document.getElementById('saveToCurrentDesktopBtn').style.display = 'none';
       const tree = document.getElementById('folderTree');
       tree.innerHTML = '';
       loadFolderLevel(null, tree);
@@ -1690,21 +1825,60 @@
       }).getSubfolders(folderId);
     }
 
+    // "存目前桌面" — skip the tree entirely and upload straight into whichever
+    // folder the desktop is currently showing (the desktop root, or a
+    // subfolder if you've browsed into one).
+    function confirmSaveToCurrentDesktop() {
+      if (folderPickerMode !== 'upload') return;
+      const destId = currentBrowseFolderId || currentFolderId;
+      closeFolderModal();
+      runUpload(destId);
+    }
+
     async function confirmFolderTarget() {
       if (!pendingDropTarget || !pendingDropTarget.folderId) { alert('請先選一個資料夾'); return; }
+      const destId = pendingDropTarget.folderId;
+
       if (folderPickerMode === 'move') {
-        const destId = pendingDropTarget.folderId;
+        closeFolderModal();
         google.script.run
-          .withSuccessHandler(() => { closeFolderModal(); refreshDesktop(); })
+          .withSuccessHandler(refreshDesktop)
           .withFailureHandler(err => alert('移動失敗：' + err.message))
           .moveItemToFolder(moveTargetItem.id, destId, !!moveTargetItem.real);
         return;
       }
 
-      const destId = pendingDropTarget.folderId;
+      if (folderPickerMode === 'move-batch') {
+        const items = Array.from(selectedItemIds).map(id => itemsById[id]).filter(Boolean);
+        closeFolderModal();
+        Promise.all(items.map(item => scriptRunPromise('moveItemToFolder', item.id, destId, !!item.real)))
+          .then(() => { clearSelection(); refreshDesktop(); })
+          .catch(err => alert('部分項目移動失敗：' + (err && err.message ? err.message : err)));
+        return;
+      }
+
+      closeFolderModal();
+      runUpload(destId);
+    }
+
+    // Shared by both "存檔" (tree pick) and "存目前桌面" — uploads every
+    // pending dropped file into destId, asking ONCE (not per file) whether to
+    // also drop a shortcut on the desktop, and only if destId isn't already
+    // the desktop root (a file uploaded straight to the desktop is already
+    // visible there — a shortcut would be redundant).
+    async function runUpload(destId) {
       const files = pendingDropFiles;
       pendingDropFiles = [];
-      closeFolderModal();
+      if (!files.length) return;
+
+      let wantsShortcut = false;
+      if (destId !== currentFolderId) {
+        const multiple = files.length > 1;
+        wantsShortcut = confirm(
+          (multiple ? '要幫這 ' + files.length + ' 個檔案' : '要幫這個檔案') +
+          '在桌面上加一個捷徑嗎？\n\n檔案本身會存在你選的資料夾裡，捷徑只是額外在桌面留一個入口。'
+        );
+      }
 
       let applyToAllChoice = null; // remembered update-vs-keep-both choice for the rest of this batch
       for (const file of files) {
@@ -1729,7 +1903,7 @@
             }
             if (wantsUpdate) updateFileId = check.fileId;
           }
-          await scriptRunPromise('uploadAndShortcut', base64, file.name, mimeType, destId, updateFileId);
+          await scriptRunPromise('uploadAndShortcut', base64, file.name, mimeType, destId, updateFileId, wantsShortcut);
         } catch (err) {
           alert('「' + file.name + '」上傳失敗：' + (err && err.message ? err.message : err));
         }
@@ -1785,15 +1959,46 @@
       }, 300); // debounce so we're not firing a GAS round trip per keystroke
     }
 
+    let spotlightSelectedIds = new Set();
+
     function renderSearchResults(results) {
       const container = document.getElementById('spotlightResults');
       container.innerHTML = '';
+      spotlightSelectedIds.clear();
+      updatePinSelectedBtn();
       results.forEach(r => {
         const row = document.createElement('div');
         row.className = 'tree-item';
-        row.innerHTML = r.name + ' <button style="float:right;" onclick="pinToDesktop(\'' + r.id + '\')">+加入桌面</button>';
+        row.innerHTML =
+          '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;">' +
+          '<input type="checkbox" onchange="toggleSpotlightSelect(\'' + r.id + '\', this.checked)">' +
+          '<span style="flex:1 1 auto;">' + r.name + '</span>' +
+          '<button onclick="event.stopPropagation(); pinToDesktop(\'' + r.id + '\')">+加入桌面</button>' +
+          '</label>';
         container.appendChild(row);
       });
+    }
+
+    function toggleSpotlightSelect(fileId, checked) {
+      if (checked) spotlightSelectedIds.add(fileId);
+      else spotlightSelectedIds.delete(fileId);
+      updatePinSelectedBtn();
+    }
+
+    function updatePinSelectedBtn() {
+      const btn = document.getElementById('pinSelectedBtn');
+      const n = spotlightSelectedIds.size;
+      btn.style.display = n ? '' : 'none';
+      btn.textContent = '+ 加入選取的 ' + n + ' 項';
+    }
+
+    function pinSelectedToDesktop() {
+      const ids = Array.from(spotlightSelectedIds);
+      if (!ids.length) return;
+      const parentId = currentBrowseFolderId || currentFolderId;
+      Promise.all(ids.map(id => scriptRunPromise('createShortcutToDesktop', id, parentId)))
+        .then(() => { spotlightSelectedIds.clear(); closeSpotlight(); refreshDesktop(); })
+        .catch(err => alert('部分項目加入失敗：' + (err && err.message ? err.message : err)));
     }
 
     function pinToDesktop(fileId) {
@@ -1843,6 +2048,10 @@
     function hideContextMenu() { document.getElementById('contextMenu').style.display = 'none'; }
 
     function showIconContextMenu(event, item) {
+      if (selectedItemIds.size > 1 && selectedItemIds.has(item.id)) {
+        showBatchContextMenu(event);
+        return;
+      }
       const openAction = item.type === 'folder' ? () => { enterFolder(item); playLaunchSound(item); } : () => { openWindow(item.name, item.url); playLaunchSound(item); };
       const entries = [{ label: '開啟', action: openAction }];
       if (item.type === 'drive') {
@@ -1885,6 +2094,35 @@
         }
       }
       showContextMenu(event.clientX, event.clientY, entries);
+    }
+
+    function showBatchContextMenu(event) {
+      const n = selectedItemIds.size;
+      const entries = [
+        { label: '📁 移動選取的 ' + n + ' 項', action: openMoveFolderPickerBatch },
+        { label: '🗑️ 移除選取的 ' + n + ' 項', action: removeSelectedItems },
+        { sep: true },
+        { label: '取消選取', action: clearSelection }
+      ];
+      showContextMenu(event.clientX, event.clientY, entries);
+    }
+
+    function removeSelectedItems() {
+      const items = Array.from(selectedItemIds).map(id => itemsById[id]).filter(Boolean);
+      if (!items.length) return;
+      const realFolders = items.filter(i => i.type === 'folder' && i.real);
+      const realFiles = items.filter(i => i.type === 'drive' && i.isShortcut === false);
+      let msg = '確定要移除選取的 ' + items.length + ' 個項目？';
+      if (realFolders.length) msg += '\n\n⚠️ 其中 ' + realFolders.length + ' 個是真正的資料夾，會連同裡面所有內容一起移到垃圾桶。';
+      if (realFiles.length) msg += '\n⚠️ 其中 ' + realFiles.length + ' 個不是捷徑，是真實檔案，會真的被刪除。';
+      if (!confirm(msg)) return;
+      const calls = items.map(item => {
+        if (item.type === 'folder' && item.real) return scriptRunPromise('removeFolder', item.id);
+        return scriptRunPromise('removeShortcut', item.id);
+      });
+      Promise.all(calls)
+        .then(() => { clearSelection(); refreshDesktop(); })
+        .catch(err => alert('部分項目移除失敗：' + (err && err.message ? err.message : err)));
     }
 
     function renameFolderPrompt(item) {
