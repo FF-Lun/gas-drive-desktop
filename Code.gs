@@ -520,7 +520,7 @@ function checkExistingFile(targetFolderId, filename) {
 // to it automatically shows the new content, nothing needs to be re-pointed.
 // Requires the "Drive API" advanced service to be enabled in this project
 // (Apps Script editor → Services → + → Drive API); without it, this throws.
-function uploadAndShortcut(base64Data, filename, mimeType, targetFolderId, updateFileId) {
+function uploadAndShortcut(base64Data, filename, mimeType, targetFolderId, updateFileId, addShortcut) {
   const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, filename);
   let file;
   if (updateFileId) {
@@ -534,6 +534,12 @@ function uploadAndShortcut(base64Data, filename, mimeType, targetFolderId, updat
   // If the file was uploaded directly into the desktop folder, it's already
   // visible there — creating a shortcut pointing to itself would be redundant.
   if (targetFolderId === desktopFolder.getId()) {
+    return { id: file.getId(), name: file.getName() };
+  }
+  // Otherwise a shortcut is only created if the person asked for one —
+  // uploading into some other folder no longer silently drops a shortcut
+  // onto the desktop by default.
+  if (!addShortcut) {
     return { id: file.getId(), name: file.getName() };
   }
   const shortcut = desktopFolder.createShortcut(file.getId());
