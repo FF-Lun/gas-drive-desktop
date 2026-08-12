@@ -607,6 +607,22 @@ function searchDriveFiles(keyword) {
   return results;
 }
 
+// Used by the folder-picker modal's search box — lets you jump straight to
+// a folder by name instead of clicking down through the tree level by level.
+function searchFolders(keyword) {
+  if (!keyword) return [];
+  const safe = keyword.replace(/'/g, "\\'");
+  const query = "title contains '" + safe + "' and trashed = false";
+  const folders = DriveApp.searchFolders(query);
+  let results = [];
+  let limit = 15;
+  while (folders.hasNext() && results.length < limit) {
+    const f = folders.next();
+    results.push({ id: f.getId(), name: f.getName() });
+  }
+  return results;
+}
+
 // ---------- Entry point ----------
 // Initial data is embedded server-side into the HTML template so the first
 // paint already has icons — no second google.script.run round trip on load.
