@@ -309,7 +309,7 @@
     #spotlightResults { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
     .modal-actions { flex-shrink: 0; margin-top: 12px; text-align: right; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; }
     .modal-actions button { margin-left: 8px; }
-    #spotlightInput { width: 100%; padding: 8px; border-radius: 6px; border: none; margin-bottom: 8px; }
+    #spotlightInput, #folderSearchInput { width: 100%; padding: 8px; border-radius: 6px; border: none; margin-bottom: 8px; }
 
     #contextMenu {
       display: none; position: fixed; background: #2b2d42; color: white;
@@ -421,6 +421,8 @@
   </div>
 
   <div id="folderModal">
+    <input id="folderSearchInput" oninput="doFolderSearch(this.value)" placeholder="搜尋資料夾名稱，或往下瀏覽樹狀結構...">
+    <div id="folderSearchResults" style="display:none;"></div>
     <div id="folderTree"></div>
     <div class="modal-actions">
       <button onclick="closeFolderModal()">取消</button>
@@ -540,6 +542,18 @@
     let sidebarState = initialData.sidebarState || 'icons'; // 'peek' | 'icons' | 'full'
     let itemsById = {};
     let selectedItemIds = new Set(); // multi-selected desktop icons (Ctrl/Cmd+click) — sidebar icons don't participate
+
+    // A folder's REAL Drive id — for a folder shortcut that's item.targetId,
+    // for the real folder itself it's just item.id. Used to catch "move a
+    // folder into itself" before it ever reaches the server, since Drive's
+    // own rejection of that isn't a friendly message.
+    function realFolderId(item) {
+      return item.real === false ? item.targetId : item.id;
+    }
+
+    function wouldMoveIntoSelf(item, destRealFolderId) {
+      return item.type === 'folder' && realFolderId(item) === destRealFolderId;
+    }
 
     function toggleSelection(id) {
       if (selectedItemIds.has(id)) selectedItemIds.delete(id);
@@ -1638,10 +1652,16 @@
           currentDropTargetEl = null;
           const item = itemsById[div.id];
           if (targetItem && item) {
+            const destId = targetItem.targetId || targetItem.id;
+            if (wouldMoveIntoSelf(item, destId)) {
+              alert('不能把資料夾移動到自己裡面。');
+              google.script.run.saveIconPosition(div.id, parseFloat(div.style.left) || 0, parseFloat(div.style.top) || 0);
+              return;
+            }
             google.script.run
               .withSuccessHandler(refreshDesktop)
               .withFailureHandler(err => alert('移動失敗：' + (err && err.message ? err.message : err)))
-              .moveItemToFolder(item.id, targetItem.targetId || targetItem.id, !!item.real);
+              .moveItemToFolder(item.id, destId, !!item.real);
           }
         } else {
           google.script.run.saveIconPosition(div.id, parseFloat(div.style.left) || 0, parseFloat(div.style.top) || 0);
@@ -1767,10 +1787,20 @@
     let folderPickerMode = 'upload'; // 'upload' | 'move' | 'move-batch'
     let moveTargetItem = null;
 
+    function resetFolderPickerSearch() {
+      const input = document.getElementById('folderSearchInput');
+      if (input) input.value = '';
+      const resultsEl = document.getElementById('folderSearchResults');
+      const treeEl = document.getElementById('folderTree');
+      if (resultsEl) { resultsEl.innerHTML = ''; resultsEl.style.display = 'none'; }
+      if (treeEl) treeEl.style.display = '';
+    }
+
     function openFolderModal() {
       folderPickerMode = 'upload';
       document.getElementById('folderModal').classList.add('open');
       document.getElementById('saveToCurrentDesktopBtn').style.display = '';
+      resetFolderPickerSearch();
       const tree = document.getElementById('folderTree');
       tree.innerHTML = '';
       loadFolderLevel(null, tree);
@@ -1782,6 +1812,7 @@
       pendingDropTarget = {};
       document.getElementById('folderModal').classList.add('open');
       document.getElementById('saveToCurrentDesktopBtn').style.display = 'none';
+      resetFolderPickerSearch();
       const tree = document.getElementById('folderTree');
       tree.innerHTML = '';
       loadFolderLevel(null, tree);
@@ -1795,9 +1826,42 @@
       pendingDropTarget = {};
       document.getElementById('folderModal').classList.add('open');
       document.getElementById('saveToCurrentDesktopBtn').style.display = 'none';
+      resetFolderPickerSearch();
       const tree = document.getElementById('folderTree');
       tree.innerHTML = '';
       loadFolderLevel(null, tree);
+    }
+
+    let folderSearchTimer = null;
+    function doFolderSearch(keyword) {
+      clearTimeout(folderSearchTimer);
+      if (!keyword.trim()) { resetFolderPickerSearch(); return; }
+      folderSearchTimer = setTimeout(() => {
+        google.script.run.withSuccessHandler(renderFolderSearchResults).searchFolders(keyword.trim());
+      }, 300);
+    }
+
+    function renderFolderSearchResults(results) {
+      const resultsEl = document.getElementById('folderSearchResults');
+      document.getElementById('folderTree').style.display = 'none';
+      resultsEl.style.display = '';
+      resultsEl.innerHTML = '';
+      if (!results.length) {
+        resultsEl.innerHTML = '<div class="tree-item" style="opacity:0.6; cursor:default;">找不到符合的資料夾</div>';
+        return;
+      }
+      results.forEach(f => {
+        const row = document.createElement('div');
+        row.className = 'tree-item';
+        row.textContent = '📁 ' + f.name;
+        row.onclick = (e) => {
+          e.stopPropagation();
+          resultsEl.querySelectorAll('.tree-item.selected').forEach(el => el.classList.remove('selected'));
+          row.classList.add('selected');
+          pendingDropTarget = Object.assign({}, pendingDropTarget, { folderId: f.id });
+        };
+        resultsEl.appendChild(row);
+      });
     }
 
     function closeFolderModal() { document.getElementById('folderModal').classList.remove('open'); }
@@ -1840,6 +1904,7 @@
       const destId = pendingDropTarget.folderId;
 
       if (folderPickerMode === 'move') {
+        if (wouldMoveIntoSelf(moveTargetItem, destId)) { alert('不能把資料夾移動到自己裡面，請選別的資料夾。'); return; }
         closeFolderModal();
         google.script.run
           .withSuccessHandler(refreshDesktop)
@@ -1849,7 +1914,13 @@
       }
 
       if (folderPickerMode === 'move-batch') {
-        const items = Array.from(selectedItemIds).map(id => itemsById[id]).filter(Boolean);
+        const allItems = Array.from(selectedItemIds).map(id => itemsById[id]).filter(Boolean);
+        const blocked = allItems.filter(item => wouldMoveIntoSelf(item, destId));
+        const items = allItems.filter(item => !wouldMoveIntoSelf(item, destId));
+        if (blocked.length) {
+          alert('「' + blocked.map(i => i.name).join('、') + '」不能移動到自己裡面，已經自動略過這幾個，其餘照常移動。');
+        }
+        if (!items.length) { closeFolderModal(); return; }
         closeFolderModal();
         Promise.all(items.map(item => scriptRunPromise('moveItemToFolder', item.id, destId, !!item.real)))
           .then(() => { clearSelection(); refreshDesktop(); })
@@ -1941,6 +2012,17 @@
       const files = Array.from(event.dataTransfer.files || []);
       if (!files.length) return;
       pendingDropFiles = files;
+
+      // Dropped straight onto a folder icon sitting on the desktop — skip
+      // the picker modal entirely and upload directly into that folder.
+      const under = document.elementFromPoint(event.clientX, event.clientY);
+      const iconEl = under ? under.closest('.icon') : null;
+      const targetItem = iconEl ? itemsById[iconEl.id] : null;
+      if (targetItem && targetItem.type === 'folder') {
+        runUpload(targetItem.targetId || targetItem.id);
+        return;
+      }
+
       openFolderModal();
     }
 
