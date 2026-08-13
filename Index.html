@@ -86,12 +86,59 @@
     #appSidebar.state-icons .addLinkBtn { margin-right: 0; width: 100%; box-sizing: border-box; }
     #appSidebar.state-peek .icon span, #appSidebar.state-icons .icon span,
     #appSidebar.state-peek .icon, #appSidebar.state-peek .addLinkBtn { display: none; }
+
+    /* "New-gen" mobile mode — the sidebar in "full" state, on a phone, takes
+       over the entire screen instead of staying a narrow drawer. Same
+       wallpaper/music underneath (shared, global — nothing sidebar-specific
+       here), just a completely different, cleaner icon layout: paged
+       instead of scrolling, no settings entries of its own. */
+    #appSidebar.state-full.mobile-fullscreen {
+      width: 100vw; padding: 16px 0 0; z-index: 1500;
+      /* Fallback only — actual background is set from JS as an opaque copy
+         of the wallpaper (see syncMobileFullscreenBackground), so nothing
+         on the #desktop layer underneath (icons, folders) can leak through. */
+      background-color: #14141f;
+    }
+    #appSidebar.mobile-fullscreen #sidebarIconGrid,
+    #appSidebar.mobile-fullscreen .addLinkBtn { display: none; }
+    #mobileFullGrid {
+      display: none; flex: 1 1 auto; overflow-x: auto; overflow-y: hidden;
+      scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+    }
+    #appSidebar.mobile-fullscreen #mobileFullGrid { display: flex; }
+    .mobile-page {
+      flex: 0 0 100%; scroll-snap-align: start;
+      display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 104px;
+      gap: 10px 6px; padding: 10px 12px; align-content: start; justify-items: center;
+      box-sizing: border-box;
+    }
+    .mobile-page .icon {
+      width: 100% !important; flex-direction: column; text-align: center; margin-right: 0 !important;
+    }
+    /* Bigger than the desktop's own 48px icons — this is the "new-gen"
+       layer, it should read as at least as prominent, not smaller. */
+    .mobile-page .icon img { width: 60px !important; height: 60px !important; }
+    .mobile-page .icon span { white-space: normal; font-size: 12px; line-height: 1.25; margin-top: 2px; }
+    #mobilePageDots {
+      display: none; justify-content: center; align-items: center; gap: 8px;
+      padding: 10px 0 14px; flex-shrink: 0;
+    }
+    #appSidebar.mobile-fullscreen #mobilePageDots { display: flex; }
+    .mobile-page-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.3); cursor: pointer;
+    }
+    .mobile-page-dot.active { background: white; }
+    .mobile-page-dot-add {
+      width: 16px; height: 16px; border-radius: 50%; background: transparent;
+      border: 1px dashed rgba(255,255,255,0.5); color: rgba(255,255,255,0.7);
+      font-size: 12px; line-height: 14px; text-align: center; margin-left: 4px;
+    }
     #sidebarStateBtn {
       position: fixed; top: 50%; transform: translateY(-50%);
       cursor: pointer; color: white; opacity: 0.9;
       width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
       font-size: 16px; background: rgba(40,40,60,0.95); border-radius: 50%;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.4); z-index: 1001;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4); z-index: 1600;
       transition: left 0.15s ease;
     }
     .addLinkBtn {
@@ -373,6 +420,8 @@
   <div id="drawerBackdrop" onclick="cycleSidebarState('peek')"></div>
   <div id="appSidebar">
     <div id="sidebarIconGrid"></div>
+    <div id="mobileFullGrid"></div>
+    <div id="mobilePageDots"></div>
   </div>
   <span id="sidebarStateBtn" onclick="cycleSidebarState()">◀</span>
   <div id="folderBar">
@@ -590,7 +639,24 @@
     let currentBackgroundValue = ''; // raw stored value (URL, gradient, or JSON playlist array) — used to prefill the wallpaper textarea
 
     function setBackgroundValue(v) {
-      document.body.style.backgroundImage = /^(linear|radial)-gradient\(/.test(v) ? v : "url('" + v + "')";
+      const css = /^(linear|radial)-gradient\(/.test(v) ? v : "url('" + v + "')";
+      document.body.style.backgroundImage = css;
+      syncMobileFullscreenBackground(css);
+    }
+
+    // The new-gen full-screen sidebar needs its OWN opaque copy of the
+    // wallpaper — a semi-transparent sidebar background doesn't just reveal
+    // the wallpaper, it reveals the #desktop layer sitting between body and
+    // the sidebar too (every file/folder icon). Painting the same image
+    // directly onto the sidebar, with a dark tint baked into the same
+    // background-image stack, keeps it fully opaque while still showing
+    // "the same wallpaper" — nothing underneath leaks through.
+    function syncMobileFullscreenBackground(bodyBgCss) {
+      const sidebar = document.getElementById('appSidebar');
+      if (!sidebar || !sidebar.classList.contains('mobile-fullscreen')) return;
+      sidebar.style.backgroundImage = 'linear-gradient(rgba(8,8,14,0.5), rgba(8,8,14,0.5)), ' + bodyBgCss;
+      sidebar.style.backgroundSize = 'cover';
+      sidebar.style.backgroundPosition = 'center';
     }
 
     function setWallpaperLabel(url) {
@@ -993,6 +1059,7 @@
       equalizePillWidths();
       applyBackground(initialData.background);
       setupMusic(initialData.music, initialData.volume);
+      currentMobilePageCount = initialData.mobilePageCount || 1;
       renderAppSidebar(initialData.appLinks);
       applySidebarState();
       renderDesktop(initialData.items);
@@ -1131,6 +1198,8 @@
       const order = ['peek', 'icons', 'full'];
       if (forceState) {
         sidebarState = forceState;
+      } else if (isMobileLayout() && sidebarState === 'full') {
+        sidebarState = 'peek'; // the "✕" in mobile full-screen mode just closes it
       } else {
         sidebarState = order[(order.indexOf(sidebarState) + 1) % order.length];
       }
@@ -1211,6 +1280,7 @@
         currentFolderId = data.folderId;
         currentDesktopIsShared = !!data.isSharedDesktop;
         sidebarState = data.sidebarState || 'icons';
+        currentMobilePageCount = data.mobilePageCount || 1;
         applyBackground(data.background);
         renderAppSidebar(data.appLinks);
         applySidebarState();
@@ -1260,6 +1330,7 @@
         applyBackground(data.background);
         document.getElementById('clockWidget').style.background = data.clockColor || '';
         setupMusic(data.music, data.volume);
+        currentMobilePageCount = data.mobilePageCount || 1;
         renderAppSidebar(data.appLinks);
         applySidebarState();
         renderDesktop(data.items);
@@ -1419,7 +1490,10 @@
     // Personal-service icons live in the fixed sidebar dock, separate from
     // the free-position file/folder grid — same click-to-open and
     // context-menu logic as any other icon, just laid out as a static list.
+    let currentAppLinksCache = []; // last-rendered app links — lets the mobile paged grid re-render without a server round trip
+
     function renderAppSidebar(appLinks) {
+      currentAppLinksCache = appLinks || [];
       appLinksById = {};
       const grid = document.getElementById('sidebarIconGrid');
       grid.innerHTML = '';
@@ -1450,6 +1524,252 @@
       addBtn.innerHTML = '<img src="' + plusIcon('#4a4a5e') + '" draggable="false"><span>新增連結</span>';
       addBtn.onclick = () => openAppLinkModal();
       grid.appendChild(addBtn);
+
+      if (document.getElementById('appSidebar').classList.contains('mobile-fullscreen')) {
+        renderMobileFullGrid(currentAppLinksCache);
+      }
+    }
+
+    // ---- "New-gen" mobile full-screen icon grid — paged instead of
+    // scrolling, wallpaper/music/settings all stay shared with the desktop
+    // (old-gen); this only renders the icon layer differently. ----
+    let mobileGridCapacity = 12;
+    let currentMobilePageCount = 1; // floor on page count — lets a blank page exist on purpose
+
+    // Splits appLinks into pages: items with an explicit .mobilePage (set by
+    // dragging onto a specific page) stay pinned there even if that page is
+    // otherwise sparse; everything else auto-fills remaining room page by
+    // page. storedMinPageCount is a floor, not a cap — real content can
+    // still push the page count higher than it.
+    function computeMobilePages(appLinks, effectiveCapacity, storedMinPageCount) {
+      const assigned = appLinks.filter(i => i.mobilePage != null);
+      const unassigned = appLinks.filter(i => i.mobilePage == null);
+      let pageCount = Math.max(storedMinPageCount || 1, 1);
+      assigned.forEach(i => { if (i.mobilePage + 1 > pageCount) pageCount = i.mobilePage + 1; });
+
+      const pages = [];
+      for (let p = 0; p < pageCount; p++) pages.push([]);
+      assigned.forEach(i => { pages[i.mobilePage].push(i); });
+
+      let cursor = 0;
+      unassigned.forEach(item => {
+        while (pages[cursor] && pages[cursor].length >= effectiveCapacity) cursor++;
+        if (!pages[cursor]) pages.push([]);
+        pages[cursor].push(item);
+      });
+      return pages;
+    }
+
+    function renderMobileFullGrid(appLinks) {
+      const container = document.getElementById('mobileFullGrid');
+      const dotsEl = document.getElementById('mobilePageDots');
+      if (!container || !dotsEl) return;
+      container.innerHTML = '';
+      dotsEl.innerHTML = '';
+
+      const items = (appLinks || []).slice();
+      const cols = 4;
+      const rowH = 104; // must match .mobile-page's grid-auto-rows
+      const availableH = Math.max(rowH * 2, window.innerHeight - 130);
+      const rows = Math.max(2, Math.floor(availableH / rowH));
+      mobileGridCapacity = cols * rows;
+      const effectiveCapacity = Math.max(1, mobileGridCapacity - 1); // reserve one slot per page for its own "+" tile
+
+      const pages = computeMobilePages(items, effectiveCapacity, currentMobilePageCount);
+
+      pages.forEach((pageItems, pageIndex) => {
+        const pageEl = document.createElement('div');
+        pageEl.className = 'mobile-page';
+        pageEl.dataset.pageIndex = pageIndex;
+        pageItems.forEach(item => pageEl.appendChild(buildMobileGridIcon(item)));
+
+        // Every page gets its own "+" — not just the last one, so you can
+        // add a shortcut from wherever you're currently looking.
+        const addBtn = document.createElement('div');
+        addBtn.className = 'icon';
+        addBtn.title = '新增個人服務 icon';
+        addBtn.innerHTML = '<img src="' + plusIcon('#4a4a5e') + '" draggable="false"><span>新增連結</span>';
+        addBtn.onclick = () => openAppLinkModal();
+        pageEl.appendChild(addBtn);
+
+        container.appendChild(pageEl);
+
+        const dot = document.createElement('div');
+        dot.className = 'mobile-page-dot' + (pageIndex === 0 ? ' active' : '');
+        dot.onclick = () => scrollToMobilePage(pageIndex);
+        dotsEl.appendChild(dot);
+      });
+
+      // "-" trims the last page (only shown once there's more than one
+      // page — can't go below a single page), "+" after it adds a
+      // genuinely new blank page on purpose, without needing to fill any
+      // earlier one first.
+      if (pages.length > 1) {
+        const removePageDot = document.createElement('div');
+        removePageDot.className = 'mobile-page-dot mobile-page-dot-add';
+        removePageDot.title = '移除最後一頁';
+        removePageDot.textContent = '−';
+        removePageDot.onclick = removeMobilePage;
+        dotsEl.appendChild(removePageDot);
+      }
+      const addPageDot = document.createElement('div');
+      addPageDot.className = 'mobile-page-dot mobile-page-dot-add';
+      addPageDot.title = '新增下一頁';
+      addPageDot.textContent = '+';
+      addPageDot.onclick = addMobilePage;
+      dotsEl.appendChild(addPageDot);
+
+      container.onscroll = () => {
+        const idx = Math.round(container.scrollLeft / container.clientWidth);
+        dotsEl.querySelectorAll('.mobile-page-dot:not(.mobile-page-dot-add)').forEach((d, i) => d.classList.toggle('active', i === idx));
+      };
+    }
+
+    function addMobilePage() {
+      const newCount = document.querySelectorAll('#mobileFullGrid .mobile-page').length + 1;
+      google.script.run.withSuccessHandler(() => {
+        currentMobilePageCount = newCount;
+        renderMobileFullGrid(currentAppLinksCache);
+        scrollToMobilePage(newCount - 1);
+      }).saveMobilePageCount(currentFolderId, newCount);
+    }
+
+    // Always trims the LAST page (symmetric with addMobilePage always
+    // adding one there) — removing a page in the middle would mean
+    // renumbering every page after it, which isn't worth the complexity.
+    // Nothing on that page is deleted: each item is just unpinned, so it
+    // falls back to normal auto-fill and flows onto an earlier page with
+    // room (or, if there's truly no room anywhere, the auto-fill logic
+    // creates an overflow page again — nothing is ever lost).
+    function removeMobilePage() {
+      const pages = document.querySelectorAll('#mobileFullGrid .mobile-page');
+      const pageCount = pages.length;
+      if (pageCount <= 1) return;
+      const lastPageIndex = pageCount - 1;
+      const itemsOnLastPage = currentAppLinksCache.filter(i => i.mobilePage === lastPageIndex);
+      const newCount = pageCount - 1;
+
+      const unpinCalls = itemsOnLastPage.map(item => scriptRunPromise('saveMobilePage', item.id, null));
+      Promise.all(unpinCalls)
+        .then(() => scriptRunPromise('saveMobilePageCount', currentFolderId, newCount))
+        .then(() => { currentMobilePageCount = newCount; refreshDesktop(); })
+        .catch(err => alert('移除頁面失敗：' + (err && err.message ? err.message : err)));
+    }
+
+    function scrollToMobilePage(index) {
+      const container = document.getElementById('mobileFullGrid');
+      container.scrollTo({ left: index * container.clientWidth, behavior: 'smooth' });
+    }
+
+    function buildMobileGridIcon(item) {
+      const div = document.createElement('div');
+      div.className = 'icon';
+      div.dataset.itemId = item.id;
+      div.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); showIconContextMenu(e, item); };
+      const img = document.createElement('img');
+      img.draggable = false;
+      img.src = iconUrlFor(item);
+      img.onerror = function () { this.onerror = null; this.src = GENERIC_ICON_FALLBACK; };
+      const label = document.createElement('span');
+      label.textContent = item.name;
+      div.appendChild(img);
+      div.appendChild(label);
+      makeMobileGridDraggable(div, item);
+      return div;
+    }
+
+    // Drag within a page reorders it; drag near the left/right screen edge
+    // auto-advances to the next/prev page so the icon can be dropped there —
+    // this is the "drag between pages" part.
+    function makeMobileGridDraggable(div, item) {
+      let dragging = false, startX = 0, startY = 0;
+      let autoScrollTimer = null;
+
+      div.addEventListener('pointerdown', (e) => {
+        dragging = true;
+        startX = e.clientX; startY = e.clientY;
+        div.setPointerCapture(e.pointerId);
+      });
+
+      div.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+        if (dist > 8) {
+          // .important beats the stylesheet's `#appSidebar .icon { position:
+          // static !important }` rule — a plain div.style.position here
+          // would silently lose that fight and never actually detach.
+          div.style.setProperty('position', 'fixed', 'important');
+          div.style.left = (e.clientX - 40) + 'px';
+          div.style.top = (e.clientY - 40) + 'px';
+          div.style.width = '76px';
+          div.style.zIndex = 3000;
+          div.style.pointerEvents = 'none';
+
+          const container = document.getElementById('mobileFullGrid');
+          const edge = 36;
+          clearInterval(autoScrollTimer);
+          if (e.clientX < edge) {
+            autoScrollTimer = setInterval(() => { container.scrollLeft -= 24; }, 16);
+          } else if (e.clientX > window.innerWidth - edge) {
+            autoScrollTimer = setInterval(() => { container.scrollLeft += 24; }, 16);
+          }
+        }
+      });
+
+      div.addEventListener('pointerup', (e) => {
+        if (!dragging) return;
+        dragging = false;
+        div.releasePointerCapture(e.pointerId);
+        clearInterval(autoScrollTimer);
+        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+        const wasLifted = div.style.position === 'fixed';
+        div.style.removeProperty('position');
+        div.style.left = ''; div.style.top = ''; div.style.width = '';
+        div.style.zIndex = ''; div.style.pointerEvents = '';
+
+        if (dist < 8) {
+          if (item.type === 'folder') enterFolder(item); else openWindow(item.name, item.url);
+          playLaunchSound(item);
+          return;
+        }
+        if (wasLifted) dropMobileGridIcon(div, item, e.clientX, e.clientY);
+      });
+    }
+
+    function dropMobileGridIcon(div, item, x, y) {
+      const under = document.elementFromPoint(x, y);
+      const targetPage = under ? under.closest('.mobile-page') : null;
+      if (!targetPage) { renderMobileFullGrid(currentAppLinksCache); return; } // dropped outside any page — snap back
+
+      const siblings = Array.from(targetPage.children).filter(el => el !== div && el.dataset && el.dataset.itemId);
+      let insertBeforeId = null;
+      for (const sib of siblings) {
+        const r = sib.getBoundingClientRect();
+        const midX = r.left + r.width / 2, midY = r.top + r.height / 2;
+        if (y < midY - r.height / 4 || (y < r.bottom && x < midX)) { insertBeforeId = sib.dataset.itemId; break; }
+      }
+
+      const currentOrder = Object.keys(appLinksById).sort((a, b) => parseInt(a.split('_').pop(), 10) - parseInt(b.split('_').pop(), 10));
+      const withoutDragged = currentOrder.filter(id => id !== item.id);
+      let insertIndex = insertBeforeId ? withoutDragged.indexOf(insertBeforeId) : -1;
+      if (insertIndex === -1) {
+        const lastSibling = siblings[siblings.length - 1];
+        insertIndex = lastSibling ? withoutDragged.indexOf(lastSibling.dataset.itemId) + 1 : withoutDragged.length;
+      }
+
+      const newOrder = withoutDragged.slice();
+      newOrder.splice(insertIndex, 0, item.id);
+      const oldIndexOrder = newOrder.map(id => parseInt(id.split('_').pop(), 10));
+      const targetPageIndex = parseInt(targetPage.dataset.pageIndex, 10);
+
+      // Order matters: saveMobilePage writes into item.id's CURRENT meta
+      // blob; reorderAppLinks then relocates every item's blob (mobilePage
+      // included) to its new index-based key. Reversing this would let the
+      // reorder carry the OLD mobilePage value instead of the new one.
+      scriptRunPromise('saveMobilePage', item.id, targetPageIndex)
+        .then(() => scriptRunPromise('reorderAppLinks', currentFolderId, oldIndexOrder))
+        .then(refreshDesktop)
+        .catch(err => alert('移動失敗：' + (err && err.message ? err.message : err)));
     }
 
     // Same click-vs-drag pattern used everywhere else in this app: a small
@@ -1532,9 +1852,23 @@
       desktop.classList.add('with-sidebar');
       topbar.classList.add('with-sidebar');
       folderBar.classList.add('with-sidebar');
-      btn.textContent = sidebarState === 'peek' ? '▶' : sidebarState === 'icons' ? '▶▶' : '◀';
-      btn.style.left = (SIDEBAR_WIDTHS[sidebarState] - 16) + 'px'; // half the 32px button on each side of the edge
-      document.getElementById('drawerBackdrop').classList.toggle('show', sidebarState !== 'peek');
+
+      const mobileFull = isMobileLayout() && sidebarState === 'full';
+      sidebar.classList.toggle('mobile-fullscreen', mobileFull);
+
+      if (mobileFull) {
+        btn.textContent = '✕';
+        btn.style.left = ''; btn.style.right = '16px';
+        btn.style.top = '16px'; btn.style.transform = 'none';
+        syncMobileFullscreenBackground(document.body.style.backgroundImage);
+        renderMobileFullGrid(currentAppLinksCache);
+      } else {
+        btn.textContent = sidebarState === 'peek' ? '▶' : sidebarState === 'icons' ? '▶▶' : '◀';
+        btn.style.left = (SIDEBAR_WIDTHS[sidebarState] - 16) + 'px'; // half the 32px button on each side of the edge
+        btn.style.right = ''; btn.style.top = '50%'; btn.style.transform = 'translateY(-50%)';
+        sidebar.style.backgroundImage = ''; // back to the normal flat panel color for peek/icons/desktop-full
+      }
+      document.getElementById('drawerBackdrop').classList.toggle('show', sidebarState !== 'peek' && !mobileFull);
     }
 
     // Re-render (from cache, no server round trip) only when crossing the
@@ -1547,6 +1881,8 @@
           renderDesktop(currentItemsCache);
           applySidebarState();
           equalizePillWidths();
+        } else if (document.getElementById('appSidebar').classList.contains('mobile-fullscreen')) {
+          renderMobileFullGrid(currentAppLinksCache); // e.g. phone rotated — page capacity changes
         }
       }, 200);
     });
