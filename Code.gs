@@ -239,6 +239,7 @@ function getDesktopItems(browseFolderId) {
       icon: link.icon,
       iconOverride: meta.icon || null,
       sound: meta.sound || null,
+      mobilePage: meta.mobilePage != null ? meta.mobilePage : null,
       removable: !link.default
     };
   });
@@ -253,6 +254,7 @@ function getDesktopItems(browseFolderId) {
     music: getMusicUrl(desktopFolder.getId()),
     volume: getMusicVolume(desktopFolder.getId()),
     sidebarState: getSidebarState(desktopFolder.getId()),
+    mobilePageCount: getMobilePageCount(desktopFolder.getId()),
     tabTitle: getCustomTitle(),
     clockColor: getClockColor(desktopFolder.getId()),
     iconOnlyTopbar: getIconOnlyTopbar(),
@@ -416,6 +418,30 @@ function saveIconSound(itemId, url) {
   const meta = getIconMeta(itemId);
   if (url) meta.sound = url; else delete meta.sound;
   PropertiesService.getUserProperties().setProperty(itemId, JSON.stringify(meta));
+  return { status: "success" };
+}
+
+// Which page of the new-gen mobile full-screen grid this item is pinned to.
+// Items with no explicit page fall back to auto-chunked placement on the
+// client — this only matters once something has actually been dragged onto
+// a specific (possibly sparse) page.
+function saveMobilePage(itemId, pageIndex) {
+  const meta = getIconMeta(itemId);
+  if (pageIndex === null || pageIndex === undefined) delete meta.mobilePage;
+  else meta.mobilePage = pageIndex;
+  PropertiesService.getUserProperties().setProperty(itemId, JSON.stringify(meta));
+  return { status: "success" };
+}
+
+// A floor on how many pages the mobile grid shows — lets the person add a
+// blank page on purpose without needing to fill every earlier page first.
+function getMobilePageCount(folderId) {
+  const v = PropertiesService.getUserProperties().getProperty('MOBILE_PAGE_COUNT_' + folderId);
+  return v ? parseInt(v, 10) : 1;
+}
+
+function saveMobilePageCount(folderId, count) {
+  PropertiesService.getUserProperties().setProperty('MOBILE_PAGE_COUNT_' + folderId, String(count));
   return { status: "success" };
 }
 
