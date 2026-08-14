@@ -677,6 +677,19 @@
       el.textContent = url ? filenameFromUrl(url) : '';
     }
 
+    // Silently downloads every image in the wallpaper list into the
+    // browser's own HTTP cache — none of these are ever inserted into the
+    // page, they exist only to make the *next* switch (manual or the
+    // 5-minute auto-rotation) a cache hit instead of a fresh download.
+    function prefetchWallpaperPlaylist(list) {
+      if (!Array.isArray(list)) return;
+      list.forEach(url => {
+        if (/^(linear|radial)-gradient\(/.test(url)) return; // a gradient isn't a network resource
+        const img = new Image();
+        img.src = url;
+      });
+    }
+
     function applyBackground(value) {
       currentBackgroundValue = value || '';
       if (wallpaperSlideshowTimer) { clearInterval(wallpaperSlideshowTimer); wallpaperSlideshowTimer = null; }
@@ -694,6 +707,7 @@
         wallpaperPlaylistIndex = 0;
         setBackgroundValue(list[0]);
         setWallpaperLabel(list[0]);
+        prefetchWallpaperPlaylist(list);
         const wallpaperPill = document.getElementById('nowWallpaperPill');
         if (wallpaperPill) wallpaperPill.style.display = '';
         wallpaperSlideshowTimer = setInterval(() => {
