@@ -119,6 +119,14 @@
        layer, it should read as at least as prominent, not smaller. */
     .mobile-page .icon img { width: 60px !important; height: 60px !important; }
     .mobile-page .icon span { white-space: normal; font-size: 12px; line-height: 1.25; margin-top: 2px; }
+    .mobile-clock-time {
+      width: 60px; height: 60px; border-radius: 14px;
+      background: rgba(20,20,28,0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      border: 1.5px solid rgba(255,255,255,0.4);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; font-weight: 300; color: white; font-variant-numeric: tabular-nums;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    }
     #mobilePageDots {
       display: none; justify-content: center; align-items: center; gap: 8px;
       padding: 10px 0 14px; flex-shrink: 0;
@@ -360,7 +368,7 @@
 
     #contextMenu {
       display: none; position: fixed; background: #2b2d42; color: white;
-      border-radius: 8px; padding: 6px; z-index: 1200; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      border-radius: 8px; padding: 6px; z-index: 1700; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
       min-width: 180px;
     }
     .ctx-item { padding: 8px 12px; cursor: pointer; border-radius: 6px; font-size: 13px; }
@@ -654,7 +662,11 @@
     function syncMobileFullscreenBackground(bodyBgCss) {
       const sidebar = document.getElementById('appSidebar');
       if (!sidebar || !sidebar.classList.contains('mobile-fullscreen')) return;
-      sidebar.style.backgroundImage = 'linear-gradient(rgba(8,8,14,0.5), rgba(8,8,14,0.5)), ' + bodyBgCss;
+      // Exact same brightness as the desktop — no dark overlay. Icon labels
+      // stay readable purely from their own text-shadow (inherited from the
+      // base .icon rule), the same way desktop icons already handle it
+      // without any dimming layer.
+      sidebar.style.backgroundImage = bodyBgCss;
       sidebar.style.backgroundSize = 'cover';
       sidebar.style.backgroundPosition = 'center';
     }
@@ -950,9 +962,12 @@
       const now = new Date();
       const hours = String(now.getHours()).padStart(2, '0');
       const minutes = String(now.getMinutes()).padStart(2, '0');
-      document.getElementById('clockTime').textContent = hours + ':' + minutes;
+      const timeStr = hours + ':' + minutes;
+      document.getElementById('clockTime').textContent = timeStr;
       const weekDays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
       document.getElementById('clockDate').textContent = (now.getMonth() + 1) + '月' + now.getDate() + '日 ' + weekDays[now.getDay()];
+      const mgTime = document.querySelector('.mobile-clock-time');
+      if (mgTime) mgTime.textContent = timeStr;
     }
 
     let calendarViewDate = new Date(); // the month currently shown — separate from "today"
@@ -1050,7 +1065,15 @@
 
     function startClock() {
       updateClock();
-      setInterval(updateClock, 1000);
+      // Only HH:MM is ever shown, so there's no point ticking every second —
+      // align the first update to the next real minute boundary, then just
+      // repeat every 60s from there.
+      const now = new Date();
+      const msToNextMinute = 60000 - (now.getSeconds() * 1000 + now.getMilliseconds());
+      setTimeout(() => {
+        updateClock();
+        setInterval(updateClock, 60000);
+      }, msToNextMinute);
     }
 
     window.onload = function () {
@@ -1060,6 +1083,9 @@
       applyBackground(initialData.background);
       setupMusic(initialData.music, initialData.volume);
       currentMobilePageCount = initialData.mobilePageCount || 1;
+      currentClockMobilePos = initialData.clockMobilePos || { page: 0, order: 0 };
+      currentWallpaperSettingsMobilePos = initialData.wallpaperSettingsMobilePos || { page: 0, order: 1 };
+      currentMusicSettingsMobilePos = initialData.musicSettingsMobilePos || { page: 0, order: 2 };
       renderAppSidebar(initialData.appLinks);
       applySidebarState();
       renderDesktop(initialData.items);
@@ -1281,6 +1307,9 @@
         currentDesktopIsShared = !!data.isSharedDesktop;
         sidebarState = data.sidebarState || 'icons';
         currentMobilePageCount = data.mobilePageCount || 1;
+        currentClockMobilePos = data.clockMobilePos || { page: 0, order: 0 };
+        currentWallpaperSettingsMobilePos = data.wallpaperSettingsMobilePos || { page: 0, order: 1 };
+        currentMusicSettingsMobilePos = data.musicSettingsMobilePos || { page: 0, order: 2 };
         applyBackground(data.background);
         renderAppSidebar(data.appLinks);
         applySidebarState();
@@ -1331,6 +1360,9 @@
         document.getElementById('clockWidget').style.background = data.clockColor || '';
         setupMusic(data.music, data.volume);
         currentMobilePageCount = data.mobilePageCount || 1;
+        currentClockMobilePos = data.clockMobilePos || { page: 0, order: 0 };
+        currentWallpaperSettingsMobilePos = data.wallpaperSettingsMobilePos || { page: 0, order: 1 };
+        currentMusicSettingsMobilePos = data.musicSettingsMobilePos || { page: 0, order: 2 };
         renderAppSidebar(data.appLinks);
         applySidebarState();
         renderDesktop(data.items);
@@ -1535,6 +1567,9 @@
     // (old-gen); this only renders the icon layer differently. ----
     let mobileGridCapacity = 12;
     let currentMobilePageCount = 1; // floor on page count — lets a blank page exist on purpose
+    let currentClockMobilePos = { page: 0, order: 0 }; // where the clock/radio tile sits in the new-gen grid
+    let currentWallpaperSettingsMobilePos = { page: 0, order: 1 };
+    let currentMusicSettingsMobilePos = { page: 0, order: 2 };
 
     // Splits appLinks into pages: items with an explicit .mobilePage (set by
     // dragging onto a specific page) stay pinned there even if that page is
@@ -1576,12 +1611,26 @@
       const effectiveCapacity = Math.max(1, mobileGridCapacity - 1); // reserve one slot per page for its own "+" tile
 
       const pages = computeMobilePages(items, effectiveCapacity, currentMobilePageCount);
+      const syntheticTiles = [
+        { pos: currentClockMobilePos, build: buildClockGridIcon },
+        { pos: currentWallpaperSettingsMobilePos, build: buildWallpaperSettingsIcon },
+        { pos: currentMusicSettingsMobilePos, build: buildMusicSettingsIcon }
+      ];
 
       pages.forEach((pageItems, pageIndex) => {
         const pageEl = document.createElement('div');
         pageEl.className = 'mobile-page';
         pageEl.dataset.pageIndex = pageIndex;
-        pageItems.forEach(item => pageEl.appendChild(buildMobileGridIcon(item)));
+
+        const iconEls = pageItems.map(item => buildMobileGridIcon(item));
+        syntheticTiles
+          .filter(t => Math.max(0, Math.min(t.pos.page, pages.length - 1)) === pageIndex)
+          .sort((a, b) => a.pos.order - b.pos.order)
+          .forEach(t => {
+            const insertAt = Math.max(0, Math.min(iconEls.length, t.pos.order));
+            iconEls.splice(insertAt, 0, t.build());
+          });
+        iconEls.forEach(el => pageEl.appendChild(el));
 
         // Every page gets its own "+" — not just the last one, so you can
         // add a shortcut from wherever you're currently looking.
@@ -1676,6 +1725,178 @@
       div.appendChild(label);
       makeMobileGridDraggable(div, item);
       return div;
+    }
+
+    // The clock/radio widget as a movable tile in the new-gen grid — tapping
+    // it is about PLAYBACK (play/pause, pick a track, pick a wallpaper),
+    // fully sharing the same state as the desktop's own clock widget.
+    // Configuring what's available to pick from lives in the two settings
+    // tiles below instead, so the clock itself stays about control, not setup.
+    function buildClockGridIcon() {
+      const div = document.createElement('div');
+      div.className = 'icon';
+      div.dataset.itemId = 'CLOCK_WIDGET';
+      const timeBox = document.createElement('div');
+      timeBox.className = 'mobile-clock-time';
+      const now = new Date();
+      timeBox.textContent = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+      const label = document.createElement('span');
+      label.textContent = '時鐘';
+      div.appendChild(timeBox);
+      div.appendChild(label);
+      makeSyntheticTileDraggable(div, (e) => openClockGridMenu(e.clientX, e.clientY), (page, order) => {
+        google.script.run.withSuccessHandler(() => { currentClockMobilePos = { page, order }; refreshDesktop(); })
+          .saveClockMobilePos(currentFolderId, page, order);
+      });
+      return div;
+    }
+
+    function openClockGridMenu(x, y) {
+      const entries = [];
+      if (currentMusicValue) {
+        entries.push({ label: musicPlaying ? '⏸ 暫停音樂' : '▶️ 播放音樂', action: () => toggleMusic() });
+      }
+      if (musicPlaylist && musicPlaylist.length > 1) {
+        entries.push({ label: '🎵 選擇播放曲目', action: (e) => showTrackPickerMenu(e) });
+      }
+      if (wallpaperPlaylist && wallpaperPlaylist.length > 1) {
+        entries.push({ label: '🖼️ 選擇桌布', action: (e) => showWallpaperPickerMenu(e) });
+      }
+      if (!entries.length) {
+        entries.push({ label: '尚未設定背景音樂或多張桌布', action: () => {} });
+      }
+      showContextMenu(x, y, entries);
+    }
+
+    function showTrackPickerMenu(e) {
+      if (!musicPlaylist) return;
+      showContextMenu(e.clientX, e.clientY, musicPlaylist.map((url, i) => ({
+        label: (i === musicPlaylistIndex ? '▶ ' : '') + filenameFromUrl(url),
+        action: () => selectPlaylistTrack(i)
+      })));
+    }
+
+    function showWallpaperPickerMenu(e) {
+      if (!wallpaperPlaylist) return;
+      showContextMenu(e.clientX, e.clientY, wallpaperPlaylist.map((url, i) => ({
+        label: (i === wallpaperPlaylistIndex ? '▶ ' : '') + filenameFromUrl(url),
+        action: () => selectWallpaperSlide(i)
+      })));
+    }
+
+    // Two default new-gen tiles, split out of the clock — these are the
+    // actual settings entry points, calling the exact same modals the
+    // desktop's own right-click menu uses.
+    function buildWallpaperSettingsIcon() {
+      const div = document.createElement('div');
+      div.className = 'icon';
+      div.dataset.itemId = 'WALLPAPER_SETTINGS_WIDGET';
+      const img = document.createElement('img');
+      img.draggable = false;
+      img.src = svgIcon('#8E44AD', '🖼️');
+      const label = document.createElement('span');
+      label.textContent = '桌布設定';
+      div.appendChild(img);
+      div.appendChild(label);
+      makeSyntheticTileDraggable(div, () => openWallpaperModal(), (page, order) => {
+        google.script.run.withSuccessHandler(() => { currentWallpaperSettingsMobilePos = { page, order }; refreshDesktop(); })
+          .saveWallpaperSettingsMobilePos(currentFolderId, page, order);
+      });
+      return div;
+    }
+
+    function buildMusicSettingsIcon() {
+      const div = document.createElement('div');
+      div.className = 'icon';
+      div.dataset.itemId = 'MUSIC_SETTINGS_WIDGET';
+      const img = document.createElement('img');
+      img.draggable = false;
+      img.src = svgIcon('#16A085', '🎵');
+      const label = document.createElement('span');
+      label.textContent = '音樂設定';
+      div.appendChild(img);
+      div.appendChild(label);
+      makeSyntheticTileDraggable(div, () => openMusicModal(), (page, order) => {
+        google.script.run.withSuccessHandler(() => { currentMusicSettingsMobilePos = { page, order }; refreshDesktop(); })
+          .saveMusicSettingsMobilePos(currentFolderId, page, order);
+      });
+      return div;
+    }
+
+    // Shared drag/drop for any "synthetic" (non-app-link) grid tile — the
+    // clock and the two settings icons all use this same interaction:
+    // drag near a screen edge to auto-advance pages, drop to reposition
+    // (via onDropSave), or a plain tap fires onTap instead.
+    function makeSyntheticTileDraggable(div, onTap, onDropSave) {
+      let dragging = false, startX = 0, startY = 0;
+      let autoScrollTimer = null;
+
+      // A left-click (or tap) fires a real 'click' event right after
+      // pointerup — right-click never does. That 'click' bubbles to the
+      // document-level "close menu on outside click" listener and was
+      // undoing our own onTap() before it ever got seen. Stopping it here
+      // doesn't affect onTap itself, which already runs from pointerup.
+      div.addEventListener('click', (e) => { e.stopPropagation(); });
+      div.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); };
+
+      div.addEventListener('pointerdown', (e) => {
+        dragging = true;
+        startX = e.clientX; startY = e.clientY;
+        div.setPointerCapture(e.pointerId);
+      });
+
+      div.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+        if (dist > 8) {
+          div.style.setProperty('position', 'fixed', 'important');
+          div.style.left = (e.clientX - 40) + 'px';
+          div.style.top = (e.clientY - 40) + 'px';
+          div.style.width = '76px';
+          div.style.zIndex = 3000;
+          div.style.pointerEvents = 'none';
+
+          const container = document.getElementById('mobileFullGrid');
+          const edge = 36;
+          clearInterval(autoScrollTimer);
+          if (e.clientX < edge) {
+            autoScrollTimer = setInterval(() => { container.scrollLeft -= 24; }, 16);
+          } else if (e.clientX > window.innerWidth - edge) {
+            autoScrollTimer = setInterval(() => { container.scrollLeft += 24; }, 16);
+          }
+        }
+      });
+
+      div.addEventListener('pointerup', (e) => {
+        if (!dragging) return;
+        dragging = false;
+        div.releasePointerCapture(e.pointerId);
+        clearInterval(autoScrollTimer);
+        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+        const wasLifted = div.style.position === 'fixed';
+        div.style.removeProperty('position');
+        div.style.left = ''; div.style.top = ''; div.style.width = '';
+        div.style.zIndex = ''; div.style.pointerEvents = '';
+
+        if (dist < 8) { onTap(e); return; }
+        if (wasLifted) dropSyntheticTile(div, e.clientX, e.clientY, onDropSave);
+      });
+    }
+
+    function dropSyntheticTile(div, x, y, onDropSave) {
+      const under = document.elementFromPoint(x, y);
+      const targetPage = under ? under.closest('.mobile-page') : null;
+      if (!targetPage) { renderMobileFullGrid(currentAppLinksCache); return; }
+      const targetPageIndex = parseInt(targetPage.dataset.pageIndex, 10);
+
+      const siblings = Array.from(targetPage.children).filter(el => el !== div && el.dataset && el.dataset.itemId);
+      let insertIndex = siblings.length;
+      for (let i = 0; i < siblings.length; i++) {
+        const r = siblings[i].getBoundingClientRect();
+        const midX = r.left + r.width / 2, midY = r.top + r.height / 2;
+        if (y < midY - r.height / 4 || (y < r.bottom && x < midX)) { insertIndex = i; break; }
+      }
+      onDropSave(targetPageIndex, insertIndex);
     }
 
     // Drag within a page reorders it; drag near the left/right screen edge
