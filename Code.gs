@@ -255,6 +255,9 @@ function getDesktopItems(browseFolderId) {
     volume: getMusicVolume(desktopFolder.getId()),
     sidebarState: getSidebarState(desktopFolder.getId()),
     mobilePageCount: getMobilePageCount(desktopFolder.getId()),
+    clockMobilePos: getClockMobilePos(desktopFolder.getId()),
+    wallpaperSettingsMobilePos: getWallpaperSettingsMobilePos(desktopFolder.getId()),
+    musicSettingsMobilePos: getMusicSettingsMobilePos(desktopFolder.getId()),
     tabTitle: getCustomTitle(),
     clockColor: getClockColor(desktopFolder.getId()),
     iconOnlyTopbar: getIconOnlyTopbar(),
@@ -444,6 +447,44 @@ function saveMobilePageCount(folderId, count) {
   PropertiesService.getUserProperties().setProperty('MOBILE_PAGE_COUNT_' + folderId, String(count));
   return { status: "success" };
 }
+
+// The clock/radio widget's position when it's placed as a movable icon in
+// the new-gen mobile grid — fully separate from app-link storage since it
+// isn't an app link, just {page, order}.
+function getClockMobilePos(folderId) {
+  const raw = PropertiesService.getUserProperties().getProperty('CLOCK_MOBILE_POS_' + folderId);
+  return raw ? JSON.parse(raw) : { page: 0, order: 0 };
+}
+
+function saveClockMobilePos(folderId, page, order) {
+  PropertiesService.getUserProperties().setProperty('CLOCK_MOBILE_POS_' + folderId, JSON.stringify({ page: page, order: order }));
+  return { status: "success" };
+}
+
+// Two more synthetic (non-app-link) tiles for the new-gen grid — split out
+// of the clock's own tap menu so the clock stays focused on playback
+// control (play/pause, pick track, pick wallpaper) while these two handle
+// actually configuring what's available to pick from.
+function getWallpaperSettingsMobilePos(folderId) {
+  const raw = PropertiesService.getUserProperties().getProperty('WPSET_MOBILE_POS_' + folderId);
+  return raw ? JSON.parse(raw) : { page: 0, order: 1 };
+}
+
+function saveWallpaperSettingsMobilePos(folderId, page, order) {
+  PropertiesService.getUserProperties().setProperty('WPSET_MOBILE_POS_' + folderId, JSON.stringify({ page: page, order: order }));
+  return { status: "success" };
+}
+
+function getMusicSettingsMobilePos(folderId) {
+  const raw = PropertiesService.getUserProperties().getProperty('MUSET_MOBILE_POS_' + folderId);
+  return raw ? JSON.parse(raw) : { page: 0, order: 2 };
+}
+
+function saveMusicSettingsMobilePos(folderId, page, order) {
+  PropertiesService.getUserProperties().setProperty('MUSET_MOBILE_POS_' + folderId, JSON.stringify({ page: page, order: order }));
+  return { status: "success" };
+}
+
 
 // Renaming a shortcut file only relabels the shortcut itself — the target file's
 // own name in its actual folder is untouched.
