@@ -93,11 +93,141 @@ function extractFolderId(input) {
   return m ? m[1] : input.trim();
 }
 
+// Lets the right-click menu set a folder's sharing directly, instead of
+// needing to go into Drive itself. access/permission are passed as strings
+// matching DriveApp's own enum names (e.g. 'PRIVATE'/'ANYONE_WITH_LINK' and
+// 'NONE'/'VIEW'/'EDIT') — DriveApp.Access and DriveApp.Permission are just
+// objects keyed by those names, so this maps straight through.
+function setFolderSharing(folderId, access, permission) {
+  const folder = DriveApp.getFolderById(folderId);
+  folder.setSharing(DriveApp.Access[access], DriveApp.Permission[permission]);
+  return { status: "success" };
+}
+
+// Bulk-copies an entire shared folder's contents (files AND subfolders,
+// recursively) into destFolderId — this is the thing Drive's own "select
+// all + Make a copy" doesn't handle well for nested folders, and that the
+// mobile Drive app doesn't offer as a bulk action at all. Runs entirely
+// server-side, so it works the same from a phone browser as a desktop one.
+// getFolderById on the source throws if the person doesn't actually have
+// access — that's the same natural permission gate addSharedDesktop uses.
+//
+// Apps Script executions have a hard runtime ceiling (a few minutes), so a
+// big folder can't be copied in one call. Instead this is a resumable job:
+// startCopySharedFolder() validates access and creates a job with a queue of
+// {sourceId, destId} folder-pairs still needing work, stored in
+// PropertiesService. copySharedFolderChunk() processes that queue for up to
+// a time budget, saves whatever's left, and reports back whether it's done —
+// the client just keeps calling it again until it is. Each folder's files
+// are listed via the Drive Advanced Service (Drive.Files.list with
+// pageToken), which is what actually makes a single folder's file listing
+// resumable across separate chunk calls — DriveApp's own FileIterator can't
+// be paused and resumed like that.
+function startCopySharedFolder(folderIdOrUrl, destFolderId) {
+  const sourceId = extractFolderId(folderIdOrUrl);
+  DriveApp.getFolderById(sourceId); // validate access up front, fail fast with a clear error
+  const jobId = Utilities.getUuid();
+  const job = {
+    queue: [{ sourceId: sourceId, destId: destFolderId, pageToken: null, subfoldersEnumerated: false }],
+    stats: { files: 0, folders: 0 }
+  };
+  const props = PropertiesService.getUserProperties();
+  props.setProperty('COPY_JOB_' + jobId, JSON.stringify(job));
+  // A durable pointer to "the job currently in progress" — this is what
+  // makes the job findable again later even if the browser tab that started
+  // it gets closed, not just resumable within the same session.
+  props.setProperty('ACTIVE_COPY_JOB_ID', jobId);
+  return jobId;
+}
+
+// Checked on page load — lets the client detect and offer to resume an
+// unfinished copy job from a previous session, instead of it just sitting
+// forgotten in storage with no way to find it again.
+function getActiveCopyJob() {
+  const props = PropertiesService.getUserProperties();
+  const jobId = props.getProperty('ACTIVE_COPY_JOB_ID');
+  if (!jobId) return null;
+  const raw = props.getProperty('COPY_JOB_' + jobId);
+  if (!raw) { props.deleteProperty('ACTIVE_COPY_JOB_ID'); return null; } // stale pointer, clean it up
+  const job = JSON.parse(raw);
+  return { jobId: jobId, stats: job.stats, remaining: job.queue.length };
+}
+
+// One small, fixed-size batch per call (10 files) — no internal time-budget
+// loop anymore, so a single call can't quietly plow through hundreds of
+// files before ever reporting back. More round trips, but each one is fast
+// and predictable, and progress is visible far more often.
+function copySharedFolderChunk(jobId) {
+  const BATCH_SIZE = 10;
+  const props = PropertiesService.getUserProperties();
+  const key = 'COPY_JOB_' + jobId;
+  const raw = props.getProperty(key);
+  if (!raw) throw new Error('找不到這個複製工作，可能已經逾時或被清除。');
+  const job = JSON.parse(raw);
+
+  if (job.queue.length) {
+    const task = job.queue[0];
+    const listParams = {
+      q: "'" + task.sourceId + "' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'",
+      pageSize: BATCH_SIZE,
+      fields: 'nextPageToken, files(id, name)'
+    };
+    if (task.pageToken) listParams.pageToken = task.pageToken;
+    const resp = Drive.Files.list(listParams);
+    const destFolder = DriveApp.getFolderById(task.destId);
+    (resp.files || []).forEach(f => {
+      DriveApp.getFileById(f.id).makeCopy(f.name, destFolder);
+      job.stats.files++;
+    });
+
+    if (resp.nextPageToken) {
+      task.pageToken = resp.nextPageToken; // more files in this same folder — stay at the front of the queue
+    } else if (!task.subfoldersEnumerated) {
+      // Files exhausted — enumerate direct subfolders once (metadata only,
+      // fast even for a lot of them), queue each as its own task, then this
+      // folder itself is done.
+      const subResp = Drive.Files.list({
+        q: "'" + task.sourceId + "' in parents and trashed = false and mimeType = 'application/vnd.google-apps.folder'",
+        pageSize: 1000,
+        fields: 'files(id, name)'
+      });
+      (subResp.files || []).forEach(sf => {
+        const newSub = destFolder.createFolder(sf.name);
+        job.stats.folders++;
+        job.queue.push({ sourceId: sf.id, destId: newSub.getId(), pageToken: null, subfoldersEnumerated: false });
+      });
+      job.queue.shift();
+    } else {
+      job.queue.shift();
+    }
+  }
+
+  const done = job.queue.length === 0;
+  if (done) {
+    props.deleteProperty(key);
+    if (props.getProperty('ACTIVE_COPY_JOB_ID') === jobId) props.deleteProperty('ACTIVE_COPY_JOB_ID');
+  } else {
+    props.setProperty(key, JSON.stringify(job));
+  }
+  return { done: done, stats: job.stats };
+}
+
 function createNewDesktop(name) {
   const root = getOrCreateDesktopsRoot();
   const folder = root.createFolder(name || "新桌面");
   seedDefaultAppLinks(folder);
   return { id: folder.getId(), name: folder.getName() };
+}
+
+// Deletes one of the person's OWN desktops (not a shared one someone else
+// owns — that's handled separately by removeSharedDesktop, which just
+// un-links it rather than deleting anything). Trashing the folder is enough:
+// listAvailableDesktops() queries the root folder live, so a trashed folder
+// simply stops showing up — no separate list to maintain.
+function deleteDesktop(folderId) {
+  const folder = DriveApp.getFolderById(folderId);
+  folder.setTrashed(true);
+  return { status: "success" };
 }
 
 function switchDesktop(folderId) {
