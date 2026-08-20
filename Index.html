@@ -173,6 +173,19 @@
       display: none; position: fixed; border: 1.5px solid #5ee7ff;
       background: rgba(94,231,255,0.15); pointer-events: none; z-index: 400;
     }
+    #copyProgressBanner {
+      display: none; position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+      background: rgba(20,20,30,0.92); color: white; padding: 10px 18px; border-radius: 20px;
+      font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 1800;
+      align-items: center; gap: 10px; white-space: nowrap;
+    }
+    #copyProgressBanner.show { display: flex; }
+    #copyProgressSpinner {
+      width: 14px; height: 14px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.3); border-top-color: #5ee7ff;
+      animation: copy-spin 0.8s linear infinite;
+    }
+    @keyframes copy-spin { to { transform: rotate(360deg); } }
 
     .icon { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
     #desktop { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
@@ -401,6 +414,10 @@
       z-index: 2000; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
     }
     #driveMusicModal, #drivePhotoModal, #driveVideoModal { max-height: 70vh; overflow-y: auto; }
+    #drivePhotoPreviewWrap {
+      position: sticky; top: -16px; z-index: 5;
+      background: #2b2d42; margin: -16px -16px 8px; padding: 16px 16px 8px;
+    }
     #wallpaperModal input, #iconPickerModal input, #musicModal input, #launchSoundModal input,
     #wallpaperModal textarea, #musicModal textarea {
       width: 100%; padding: 6px; border-radius: 4px; border: none; margin: 8px 0;
@@ -421,6 +438,7 @@
       <div class="pill" id="desktopPill"><select id="desktopSelect" onchange="onDesktopSwitch(this.value)"></select></div>
       <span class="pill" onclick="openSpotlight()">🔍<span class="pill-text"> 搜尋<span class="hint-desktop-only"> (Ctrl+Space)</span></span></span>
       <span class="pill" onclick="createDesktopPrompt()">＋<span class="pill-text"> 新桌面</span></span>
+      <span class="pill" onclick="deleteDesktopPrompt()">🗑️<span class="pill-text"> 刪除桌面</span></span>
       <span class="pill" onclick="joinSharedDesktopPrompt()">🔗<span class="pill-text"> 加入分享桌面</span></span>
     </div>
   </div>
@@ -438,6 +456,7 @@
   </div>
   <div id="desktop"></div>
   <div id="marqueeBox"></div>
+  <div id="copyProgressBanner"><div id="copyProgressSpinner"></div><span id="copyProgressText"></span></div>
 
   <div id="clockWidget" onclick="event.stopPropagation(); toggleMiniCalendar()">
     <div id="clockTime">00:00</div>
@@ -576,9 +595,17 @@
 
   <div id="drivePhotoModal">
     <h4 style="margin:0 0 10px;">雲端硬碟相片瀏覽器</h4>
-    <p class="modal-hint">列出目前這個資料夾裡的圖片。點一張會用 Drive 自己的檢視器打開，同一個小視窗會重複利用，點下一張直接換圖。</p>
+    <p class="modal-hint">列出目前這個資料夾裡的圖片（不含子資料夾）。點一張或按上一張/下一張，直接在這裡換縮圖預覽，不會另外開視窗。</p>
+    <div id="drivePhotoPreviewWrap" style="display:none; text-align:center;">
+      <img id="drivePhotoPreviewImg" style="max-width:100%; max-height:260px; object-fit:contain; border-radius:8px; background:rgba(0,0,0,0.2);">
+      <div style="margin-top:8px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">
+        <button onclick="prevDrivePhoto()">◀ 上一張</button>
+        <button onclick="nextDrivePhoto()">下一張 ▶</button>
+        <button onclick="openCurrentDrivePhotoFullSize()">🔍 開啟檔案</button>
+        <button onclick="closeDrivePhotoModal()">關閉</button>
+      </div>
+    </div>
     <div id="drivePhotoList"></div>
-    <div class="modal-actions"><button onclick="closeDrivePhotoModal()">關閉</button></div>
   </div>
 
   <div id="driveVideoModal">
@@ -1122,6 +1149,18 @@
       clockEl.addEventListener('pointermove', () => { if (clockLongPressTimer) { clearTimeout(clockLongPressTimer); clockLongPressTimer = null; } });
       clockEl.addEventListener('pointerup', () => { if (clockLongPressTimer) { clearTimeout(clockLongPressTimer); clockLongPressTimer = null; } });
 
+      // If a copy job from a previous session never finished (browser
+      // closed, tab reloaded mid-job, etc.), offer to pick up right where
+      // it left off instead of it just sitting forgotten in storage.
+      google.script.run.withSuccessHandler(job => {
+        if (!job) return;
+        const wantsResume = confirm(
+          '偵測到上次還沒複製完的工作：已複製 ' + job.stats.files + ' 個檔案、' + job.stats.folders + ' 個資料夾，' +
+          '還剩 ' + job.remaining + ' 個資料夾待處理。\n\n要繼續完成這個複製工作嗎？'
+        );
+        if (wantsResume) runCopySharedFolderChunk(job.jobId);
+      }).getActiveCopyJob();
+
       document.addEventListener('keydown', e => {
         if (e.ctrlKey && e.code === 'Space') { e.preventDefault(); openSpotlight(); }
       });
@@ -1209,25 +1248,29 @@
     };
 
     function desktopMenuEntries() {
-      const entries = [{ label: '重新整理', action: refreshDesktop }];
-      if (!isMobileLayout()) entries.push({ label: '排列圖示', action: arrangeIcons });
+      const entries = [{ label: '🔄 重新整理', action: refreshDesktop }];
+      if (!isMobileLayout()) entries.push({ label: '🧩 排列圖示', action: arrangeIcons });
       entries.push(
         { sep: true },
-        { label: '重新命名此桌面', action: renameDesktopPrompt },
-        { label: '設定分頁標題', action: setTabTitlePrompt },
-        { label: document.getElementById('topbarPills').classList.contains('icon-only') ? '頂端列恢復文字' : '頂端列改純圖示（文字異常時的備案）', action: toggleIconOnlyTopbar },
-        { label: '新增資料夾', action: createFolderPrompt },
-        { label: '搜尋並新增雲端檔案', action: openSpotlight },
-        { label: '設定個人服務 icon', action: openAppLinkModal },
-        { label: '桌布設定', action: openWallpaperModal },
-        { label: '背景音樂設定', action: openMusicModal },
+        { label: '✏️ 重新命名此桌面', action: renameDesktopPrompt },
+        { label: '🏷️ 設定分頁標題', action: setTabTitlePrompt },
+        { label: document.getElementById('topbarPills').classList.contains('icon-only') ? '👁️ 頂端列恢復文字' : '👁️ 頂端列改純圖示（文字異常時的備案）', action: toggleIconOnlyTopbar },
         { sep: true },
-        { label: '🎵 雲端硬碟音樂播放器', action: openMusicPlayerModal },
-        { label: '🖼️ 雲端硬碟相片瀏覽器', action: openPhotoViewerModal },
+        { label: '📁 新增資料夾', action: createFolderPrompt },
+        { label: '🔍 搜尋並新增雲端檔案', action: openSpotlight },
+        { label: '📋 複製分享資料夾到這裡', action: copySharedFolderPrompt },
+        { label: '🔗 設定分享', action: (e) => openSharingMenu(e || event, currentBrowseFolderId || currentFolderId) },
+        { sep: true },
+        { label: '🔌 設定個人服務 icon', action: openAppLinkModal },
+        { label: '🖼️ 桌布設定', action: openWallpaperModal },
+        { label: '🎵 背景音樂設定', action: openMusicModal },
+        { sep: true },
+        { label: '🎧 雲端硬碟音樂播放器', action: openMusicPlayerModal },
+        { label: '📷 雲端硬碟相片瀏覽器', action: openPhotoViewerModal },
         { label: '🎬 雲端硬碟影片播放器', action: openVideoPlayerModal }
       );
       if (currentDesktopIsShared) {
-        entries.push({ sep: true }, { label: '從我的清單移除這個分享桌面', action: leaveSharedDesktop });
+        entries.push({ sep: true }, { label: '🚪 從我的清單移除這個分享桌面', action: leaveSharedDesktop });
       }
       return entries;
     }
@@ -1315,7 +1358,7 @@
       }).removeSharedDesktop(currentFolderId);
     }
 
-    function refreshDesktop() {
+    function refreshDesktop(then) {
       google.script.run.withSuccessHandler(data => {
         currentFolderId = data.folderId;
         currentDesktopIsShared = !!data.isSharedDesktop;
@@ -1329,6 +1372,7 @@
         applySidebarState();
         renderDesktop(data.items);
         updateBreadcrumb(data);
+        if (then) then();
       }).getDesktopItems(currentBrowseFolderId);
     }
 
@@ -1401,6 +1445,32 @@
       }).createNewDesktop(name);
     }
 
+    function deleteDesktopPrompt() {
+      if (currentDesktopIsShared) {
+        alert('這是別人分享給你的桌面，不能用這裡刪除。如果只是不想要它出現在你的清單裡，右鍵桌面空白處選「🚪 從我的清單移除這個分享桌面」即可，這不會刪掉對方的東西。');
+        return;
+      }
+      const sel = document.getElementById('desktopSelect');
+      if (sel.options.length <= 1) {
+        alert('至少要留一個桌面，不能把最後一個也刪掉。');
+        return;
+      }
+      const currentName = sel.options[sel.selectedIndex].textContent;
+      if (!confirm('確定要刪除「' + currentName + '」這個桌面嗎？\n\n裡面所有檔案、資料夾都會連同這個桌面一起進垃圾桶，不是只有捷徑——這是真的會刪掉東西，請確認你要的是這個。')) return;
+
+      const deletedId = currentFolderId;
+      google.script.run
+        .withSuccessHandler(() => {
+          const opt = sel.querySelector('option[value="' + deletedId + '"]');
+          if (opt) opt.remove();
+          const nextId = sel.options[0].value; // whatever's left, pick the first
+          sel.value = nextId;
+          onDesktopSwitch(nextId);
+        })
+        .withFailureHandler(err => alert('刪除失敗：' + (err && err.message ? err.message : err)))
+        .deleteDesktop(deletedId);
+    }
+
     function joinSharedDesktopPrompt() {
       const link = prompt('貼上對方分享給你的資料夾連結或 ID：\n（對方要先在 Google Drive 把那個桌面資料夾分享給你，這裡才抓得到）');
       if (!link) return;
@@ -1416,6 +1486,90 @@
         })
         .withFailureHandler(err => alert('加入失敗，請確認對方已經把資料夾分享給你的帳號：' + err.message))
         .addSharedDesktop(link);
+    }
+
+    // Bulk-copies an entire shared folder (files + subfolders, recursively)
+    // into wherever the desktop is currently browsing — works identically
+    // on mobile or desktop since it's all server-side, unlike Drive's own
+    // mobile app which doesn't offer bulk "Make a copy" at all.
+    function copySharedFolderPrompt() {
+      const link = prompt(
+        '貼上對方分享的資料夾連結或 ID：\n\n' +
+        '會把裡面所有檔案、子資料夾都複製一份到你目前瀏覽的這個位置（不影響對方原本的資料夾）。' +
+        '檔案數量多的話會自動分批處理，畫面下方會有進度提示，請不要關掉分頁。'
+      );
+      if (!link) return;
+      const destId = currentBrowseFolderId || currentFolderId;
+      showCopyProgress('準備開始複製...');
+      clearTimeout(copyChunkWatchdog);
+      copyChunkWatchdog = setTimeout(() => {
+        hideCopyProgress();
+        alert('複製工作似乎卡住了，沒有收到伺服器回應。可以重新整理頁面後再試一次。');
+      }, 6 * 60 * 1000);
+      google.script.run
+        .withSuccessHandler(jobId => runCopySharedFolderChunk(jobId))
+        .withFailureHandler(err => {
+          clearTimeout(copyChunkWatchdog);
+          hideCopyProgress();
+          alert('無法開始複製，請確認連結正確、且對方已經分享給你的帳號：' + (err && err.message ? err.message : err));
+        })
+        .startCopySharedFolder(link, destId);
+    }
+
+    function showCopyProgress(text) {
+      document.getElementById('copyProgressText').textContent = text;
+      document.getElementById('copyProgressBanner').classList.add('show');
+    }
+    function hideCopyProgress() {
+      document.getElementById('copyProgressBanner').classList.remove('show');
+    }
+
+    // Keeps calling the server for one time-boxed chunk of work at a time —
+    // this is the "resume" loop: each call picks up exactly where the
+    // previous one left off (the queue/progress lives server-side, keyed by
+    // jobId), so a folder too big for a single execution just takes several
+    // chunks instead of failing partway through. The progress banner is the
+    // only thing that changes here — the actual copying logic is unchanged.
+    let copyChunkWatchdog = null;
+
+    function runCopySharedFolderChunk(jobId) {
+      showCopyProgress('複製中...');
+      clearTimeout(copyChunkWatchdog);
+      // Safety net: some Google-internal errors (like the "too many
+      // concurrent scripts" one) throw as an uncaught error inside Google's
+      // own script-run bridge, never actually reaching our withFailureHandler
+      // below — from here that just looks like the call never returning at
+      // all. Without this, the spinner would spin forever with no way to
+      // know something went wrong. Margin is generous: a bit over the
+      // server's own 4-minute chunk budget.
+      copyChunkWatchdog = setTimeout(() => {
+        hideCopyProgress();
+        alert('複製工作似乎卡住了，沒有收到伺服器回應。已經複製完成的部分不會消失，建議重新整理頁面確認目前結果，需要的話可以再重新觸發一次複製。');
+      }, 6 * 60 * 1000);
+
+      google.script.run
+        .withSuccessHandler(result => {
+          clearTimeout(copyChunkWatchdog);
+          if (result.done) {
+            hideCopyProgress();
+            alert('複製完成！共複製了 ' + result.stats.files + ' 個檔案、' + result.stats.folders + ' 個資料夾。');
+            refreshDesktop();
+          } else {
+            showCopyProgress('複製中... 已複製 ' + result.stats.files + ' 個檔案、' + result.stats.folders + ' 個資料夾，繼續處理下一批...');
+            // Refresh THEN start the next batch — never both at once. Batches
+            // are small now (10 files), so refreshing every batch is safe;
+            // the earlier pileup happened because refresh and the next chunk
+            // fired in parallel, not because refreshing itself was the problem.
+            refreshDesktop(() => runCopySharedFolderChunk(jobId));
+          }
+        })
+        .withFailureHandler(err => {
+          clearTimeout(copyChunkWatchdog);
+          hideCopyProgress();
+          alert('複製過程中發生錯誤，已中斷：' + (err && err.message ? err.message : err) + '\n\n已經複製完成的部分不會消失，可以檢查目前的結果。');
+          refreshDesktop(); // show whatever got copied before the error, this one time
+        })
+        .copySharedFolderChunk(jobId);
     }
 
     // Personal app-link icons use Google's public favicon service so we don't
@@ -1777,7 +1931,7 @@
         entries.push({ label: '🖼️ 選擇桌布', action: (e) => showWallpaperPickerMenu(e) });
       }
       if (!entries.length) {
-        entries.push({ label: '尚未設定背景音樂或多張桌布', action: () => {} });
+        entries.push({ label: 'ℹ️ 尚未設定背景音樂或多張桌布', action: () => {} });
       }
       showContextMenu(x, y, entries);
     }
@@ -2706,44 +2860,45 @@
         return;
       }
       const openAction = item.type === 'folder' ? () => { enterFolder(item); playLaunchSound(item); } : () => { openWindow(item.name, item.url); playLaunchSound(item); };
-      const entries = [{ label: '開啟', action: openAction }];
+      const entries = [{ label: '📂 開啟', action: openAction }];
       if (item.type === 'drive') {
-        entries.push({ label: '在雲端硬碟中檢視', action: () => window.open('https://drive.google.com/file/d/' + item.targetId + '/view', '_blank') });
+        entries.push({ label: '🔍 在雲端硬碟中檢視', action: () => window.open('https://drive.google.com/file/d/' + item.targetId + '/view', '_blank') });
         entries.push({ sep: true });
-        entries.push({ label: '更換圖示', action: () => openIconPicker(item) });
+        entries.push({ label: '🖼️ 更換圖示', action: () => openIconPicker(item) });
         entries.push({ label: '🔊 設定開啟音效', action: () => openLaunchSoundModal(item) });
-        entries.push({ label: item.isShortcut === false ? '重新命名檔案' : '重新命名捷徑', action: () => renameItemPrompt(item) });
-        entries.push({ label: '移動到其他資料夾', action: () => openMoveFolderPicker(item) });
+        entries.push({ label: item.isShortcut === false ? '✏️ 重新命名檔案' : '✏️ 重新命名捷徑', action: () => renameItemPrompt(item) });
+        entries.push({ sep: true });
+        entries.push({ label: '📁 移動到其他資料夾', action: () => openMoveFolderPicker(item) });
+        entries.push({ label: '✨ 問 Gemini', action: () => askInGemini(item) });
+        entries.push({ label: '📤 傳送到...', action: (e) => showSendToMenu(e || event, item) });
+        entries.push({ sep: true });
         entries.push({
-          label: item.isShortcut === false ? '⚠️ 刪除檔案本體（會真的刪掉！）' : '移除捷徑 (不影響原始檔案)',
+          label: item.isShortcut === false ? '🗑️ 刪除檔案本體（會真的刪掉！）' : '🗑️ 移除捷徑 (不影響原始檔案)',
           action: () => removeItemPrompt(item)
         });
-        entries.push({ sep: true });
-        entries.push({ label: '✨ 問 Gemini', action: () => askInGemini(item) });
-        entries.push({ sep: true });
-        entries.push({ label: '📤 傳送到...', action: (e) => showSendToMenu(e || event, item) });
       } else if (item.type === 'folder') {
-        entries.push({ label: '在雲端硬碟中檢視', action: () => window.open('https://drive.google.com/drive/folders/' + (item.targetId || item.id), '_blank') });
+        entries.push({ label: '🔍 在雲端硬碟中檢視', action: () => window.open('https://drive.google.com/drive/folders/' + (item.targetId || item.id), '_blank') });
         entries.push({ sep: true });
-        entries.push({ label: '更換圖示', action: () => openIconPicker(item) });
+        entries.push({ label: '🖼️ 更換圖示', action: () => openIconPicker(item) });
         entries.push({ label: '🔊 設定開啟音效', action: () => openLaunchSoundModal(item) });
-        entries.push({ label: '移動到其他資料夾', action: () => openMoveFolderPicker(item) });
-        if (item.real) {
-          entries.push({ label: '重新命名資料夾', action: () => renameFolderPrompt(item) });
-          entries.push({ label: '刪除資料夾 (連同裡面的內容!)', action: () => removeFolderPrompt(item) });
-        } else {
-          entries.push({ label: '重新命名捷徑', action: () => renameItemPrompt(item) });
-          entries.push({ label: '移除捷徑 (不影響原始資料夾)', action: () => removeItemPrompt(item) });
-        }
+        entries.push({ label: item.real ? '✏️ 重新命名資料夾' : '✏️ 重新命名捷徑', action: () => (item.real ? renameFolderPrompt(item) : renameItemPrompt(item)) });
         entries.push({ sep: true });
+        entries.push({ label: '📁 移動到其他資料夾', action: () => openMoveFolderPicker(item) });
+        entries.push({ label: '🔗 設定分享', action: (e) => openSharingMenu(e || event, item.targetId || item.id) });
         entries.push({ label: '📤 傳送到...', action: (e) => showSendToMenu(e || event, item) });
+        entries.push({ sep: true });
+        entries.push({
+          label: item.real ? '🗑️ 刪除資料夾 (連同裡面的內容!)' : '🗑️ 移除捷徑 (不影響原始資料夾)',
+          action: () => (item.real ? removeFolderPrompt(item) : removeItemPrompt(item))
+        });
       } else {
         entries.push({ sep: true });
-        entries.push({ label: '更換圖示', action: () => openIconPicker(item) });
+        entries.push({ label: '🖼️ 更換圖示', action: () => openIconPicker(item) });
         entries.push({ label: '🔊 設定開啟音效', action: () => openLaunchSoundModal(item) });
         if (item.removable !== false) {
-          entries.push({ label: '重新命名', action: () => renameAppLinkByItem(item) });
-          entries.push({ label: '移除', action: () => removeAppLinkByItem(item) });
+          entries.push({ sep: true });
+          entries.push({ label: '✏️ 重新命名', action: () => renameAppLinkByItem(item) });
+          entries.push({ label: '🗑️ 移除', action: () => removeAppLinkByItem(item) });
         }
       }
       showContextMenu(event.clientX, event.clientY, entries);
@@ -2755,7 +2910,7 @@
         { label: '📁 移動選取的 ' + n + ' 項', action: openMoveFolderPickerBatch },
         { label: '🗑️ 移除選取的 ' + n + ' 項', action: removeSelectedItems },
         { sep: true },
-        { label: '取消選取', action: clearSelection }
+        { label: '↩️ 取消選取', action: clearSelection }
       ];
       showContextMenu(event.clientX, event.clientY, entries);
     }
@@ -2919,48 +3074,83 @@
       const lines = raw.split('\n').map(s => normalizeDriveUrl(s.trim())).filter(Boolean);
       if (lines.length <= 1) { applyWallpaper(lines[0] || ''); return; }
 
-      closeWallpaperModal();
-      const checks = lines.map(url => new Promise(resolve => {
-        const img = new Image();
-        img.onload = () => resolve(url);
-        img.onerror = () => resolve(null);
-        img.src = url;
-      }));
+      const checks = lines.map(url => checkWallpaperUrl(url));
       Promise.all(checks).then(results => {
         const valid = results.filter(Boolean);
         if (!valid.length) {
-          applyBackground(DEFAULT_BG);
-          google.script.run.saveBackgroundUrl(currentFolderId, '');
-          alert('清單裡的圖片全部載入失敗，已經退回預設底色。');
+          // Same principle as the single-URL path: a total failure might
+          // just be a bad moment for the network, so leave the textarea and
+          // the currently saved/displayed wallpaper completely untouched.
+          alert('清單裡的圖片全部載入失敗、超過 5MB，或超過 4000px。可能只是暫時性問題，網址還留著，可以直接再按一次套用重試——目前的桌布不會被換掉。');
           return;
         }
         const json = JSON.stringify(valid);
         applyBackground(json);
         google.script.run.saveBackgroundUrl(currentFolderId, json);
-        if (valid.length < lines.length) alert('清單裡有 ' + (lines.length - valid.length) + ' 張圖載入失敗，已經自動跳過，剩下 ' + valid.length + ' 張輪播。');
+        closeWallpaperModal();
+        if (valid.length < lines.length) alert('清單裡有 ' + (lines.length - valid.length) + ' 張圖載入失敗、太大或太慢，已經自動跳過，剩下 ' + valid.length + ' 張輪播。');
+      });
+    }
+
+    // Shared validation for any wallpaper URL — three independent checks,
+    // any one failing rejects it:
+    //  1. File size via a HEAD request — best-effort only, since many hosts
+    //     don't allow reading headers cross-origin; if it fails we just fall
+    //     through to the checks below instead of blocking on it.
+    //  2. Load time — over 8s is treated as a failure, same threshold used
+    //     for the launch-sound preload.
+    //  3. Pixel dimensions — over 4000px on either side gets rejected even
+    //     if the file itself loaded fine and quickly; oversized dimensions
+    //     are what actually make background-size:cover expensive to decode
+    //     and scale, more directly than raw byte count.
+    async function checkWallpaperUrl(url, timeoutMs) {
+      const limitMs = timeoutMs || 8000;
+      try {
+        const res = await fetch(url, { method: 'HEAD' });
+        const len = res.headers.get('content-length');
+        if (len && parseInt(len, 10) > 5 * 1024 * 1024) return null; // over 5MB
+      } catch (e) { /* CORS or network — can't check size this way, fall through */ }
+
+      return new Promise(resolve => {
+        const startTime = performance.now();
+        let settled = false;
+        const finish = (ok) => { if (!settled) { settled = true; resolve(ok ? url : null); } };
+        const timer = setTimeout(() => finish(false), limitMs);
+        const img = new Image();
+        img.onload = () => {
+          clearTimeout(timer);
+          if (performance.now() - startTime > limitMs) { finish(false); return; }
+          if (img.naturalWidth > 4000 || img.naturalHeight > 4000) { finish(false); return; }
+          finish(true);
+        };
+        img.onerror = () => { clearTimeout(timer); finish(false); };
+        img.src = url;
       });
     }
 
     function applyWallpaper(value) {
-      closeWallpaperModal();
       value = normalizeDriveUrl(value);
       if (/^(linear|radial)-gradient\(/.test(value)) {
         // A preset gradient is generated CSS, not an image — nothing to preload-check.
         applyBackground(value);
         google.script.run.saveBackgroundUrl(currentFolderId, value);
+        closeWallpaperModal();
         return;
       }
-      const test = new Image();
-      test.onload = () => {
+      checkWallpaperUrl(value).then(result => {
+        if (!result) {
+          // Deliberately a no-op beyond the alert: don't touch the saved
+          // wallpaper, don't change what's currently displayed, and don't
+          // close the modal — a failed attempt (which might just be a
+          // momentary network hiccup) should be fully reversible, not
+          // destructive. The URL stays in the input so retrying is one click.
+          alert('這張圖片載入失敗、超過 5MB，或超過 4000px。可能只是暫時性問題，網址還留著，可以直接再按一次套用重試——目前的桌布不會被換掉。');
+          return;
+        }
         applyBackground(value);
         google.script.run.saveBackgroundUrl(currentFolderId, value);
-      };
-      test.onerror = (e) => {
-        applyBackground(DEFAULT_BG);
-        google.script.run.saveBackgroundUrl(currentFolderId, '');
-        alert('這張圖片網址載入失敗，已經退回預設底色。');
-      };
-      test.src = value;
+        closeWallpaperModal();
+      });
     }
 
     // ---- Background music ----
@@ -2971,6 +3161,25 @@
     function closeMusicModal() { document.getElementById('musicModal').style.display = 'none'; }
 
     let soundPickerTargetId = null;
+
+    // Right-click "設定分享" — sets Drive's own sharing on a folder directly,
+    // no need to leave the app. Three common presets cover the vast majority
+    // of cases; anything more exotic (specific people, domain-only, etc.)
+    // still has to go through Drive itself.
+    function openSharingMenu(event, folderId) {
+      showContextMenu(event.clientX, event.clientY, [
+        { label: '🔒 不公開（僅限你自己）', action: () => applyFolderSharing(folderId, 'PRIVATE', 'NONE') },
+        { label: '👁️ 知道連結的人可檢視', action: () => applyFolderSharing(folderId, 'ANYONE_WITH_LINK', 'VIEW') },
+        { label: '✏️ 知道連結的人可編輯', action: () => applyFolderSharing(folderId, 'ANYONE_WITH_LINK', 'EDIT') }
+      ]);
+    }
+
+    function applyFolderSharing(folderId, access, permission) {
+      google.script.run
+        .withSuccessHandler(() => alert('分享設定已更新。'))
+        .withFailureHandler(err => alert('設定失敗：' + (err && err.message ? err.message : err)))
+        .setFolderSharing(folderId, access, permission);
+    }
 
     function openLaunchSoundModal(item) {
       soundPickerTargetId = item.id;
@@ -3097,6 +3306,7 @@
 
     function openPhotoViewerModal() {
       document.getElementById('drivePhotoModal').style.display = 'block';
+      document.getElementById('drivePhotoPreviewWrap').style.display = 'none';
       const list = document.getElementById('drivePhotoList');
       list.innerHTML = '載入中...';
       google.script.run
@@ -3104,6 +3314,7 @@
           drivePhotoFiles = files;
           drivePhotoIndex = -1;
           renderDrivePhotoList();
+          if (files.length) showDrivePhotoAt(0);
         })
         .withFailureHandler(err => { list.textContent = '載入失敗：' + err.message; })
         .listMediaFiles(currentBrowseFolderId || currentFolderId, 'image/');
@@ -3120,16 +3331,20 @@
         row.onclick = () => showDrivePhotoAt(i);
         list.appendChild(row);
       });
-      const nav = document.createElement('div');
-      nav.className = 'modal-actions';
-      nav.style.marginTop = '10px';
-      nav.innerHTML = '<button onclick="prevDrivePhoto()">◀ 上一張</button><button onclick="nextDrivePhoto()">下一張 ▶</button>';
-      list.appendChild(nav);
     }
 
+    // Only the CURRENTLY-viewed photo ever requests a thumbnail — switching
+    // via prev/next just swaps one <img src>, no popup window, no reloading
+    // Drive's own viewer UI each time. Keeping this to one request at a time
+    // (instead of thumbnailing the whole list) is also what keeps this safe
+    // from Google's thumbnail-endpoint rate limiting on folders with lots of photos.
     function showDrivePhotoAt(i) {
       drivePhotoIndex = i;
-      openDriveMediaWindow(drivePhotoFiles[i].id, 'drivePhotoViewer', 800, 700);
+      const file = drivePhotoFiles[i];
+      const wrap = document.getElementById('drivePhotoPreviewWrap');
+      const img = document.getElementById('drivePhotoPreviewImg');
+      img.src = 'https://drive.google.com/thumbnail?id=' + file.id + '&sz=w1000';
+      wrap.style.display = 'block';
       renderDrivePhotoList();
     }
     function nextDrivePhoto() {
@@ -3140,10 +3355,15 @@
       if (!drivePhotoFiles.length) return;
       showDrivePhotoAt((drivePhotoIndex - 1 + drivePhotoFiles.length) % drivePhotoFiles.length);
     }
+    // The thumbnail is capped at w1000 and re-compressed by Google — for the
+    // real, full-resolution original, this still opens Drive's own viewer.
+    function openCurrentDrivePhotoFullSize() {
+      if (drivePhotoIndex < 0 || !drivePhotoFiles[drivePhotoIndex]) return;
+      window.open('https://drive.google.com/file/d/' + drivePhotoFiles[drivePhotoIndex].id + '/view', '_blank');
+    }
 
     function closeDrivePhotoModal() {
       document.getElementById('drivePhotoModal').style.display = 'none';
-      closeDriveMediaWindow();
     }
 
     let driveVideoFiles = [];
