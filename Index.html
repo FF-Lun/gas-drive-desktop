@@ -141,6 +141,13 @@
       border: 1px dashed rgba(255,255,255,0.5); color: rgba(255,255,255,0.7);
       font-size: 12px; line-height: 14px; text-align: center; margin-left: 4px;
     }
+    #fullscreenBtn {
+      display: none; position: fixed; top: 16px; left: 16px;
+      width: 32px; height: 32px; align-items: center; justify-content: center;
+      font-size: 15px; background: rgba(40,40,60,0.95); color: white; border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4); cursor: pointer; z-index: 1600;
+    }
+
     #sidebarStateBtn {
       position: fixed; top: 50%; transform: translateY(-50%);
       cursor: pointer; color: white; opacity: 0.9;
@@ -457,6 +464,7 @@
   <div id="desktop"></div>
   <div id="marqueeBox"></div>
   <div id="copyProgressBanner"><div id="copyProgressSpinner"></div><span id="copyProgressText"></span></div>
+  <div id="fullscreenBtn" onclick="toggleFullscreen()" title="全螢幕">⛶</div>
 
   <div id="clockWidget" onclick="event.stopPropagation(); toggleMiniCalendar()">
     <div id="clockTime">00:00</div>
@@ -1129,6 +1137,7 @@
       currentMusicSettingsMobilePos = initialData.musicSettingsMobilePos || { page: 0, order: 2 };
       renderAppSidebar(initialData.appLinks);
       applySidebarState();
+      initFullscreenButton();
       renderDesktop(initialData.items);
       renderDesktopSelect(desktopList);
       updateBreadcrumb(initialData);
@@ -1260,6 +1269,7 @@
         { label: '🔍 搜尋並新增雲端檔案', action: openSpotlight },
         { label: '📋 複製分享資料夾到這裡', action: copySharedFolderPrompt },
         { label: '🔗 設定分享', action: (e) => openSharingMenu(e || event, currentBrowseFolderId || currentFolderId) },
+        { label: '📋 複製此資料夾連結', action: copyCurrentDesktopLink },
         { sep: true },
         { label: '🔌 設定個人服務 icon', action: openAppLinkModal },
         { label: '🖼️ 桌布設定', action: openWallpaperModal },
@@ -1277,6 +1287,30 @@
 
     // Cycles 貼齊 → 圖示 → 展開 → 貼齊 ... Passing a specific state (e.g. from
     // the backdrop tap) jumps straight there instead of cycling.
+    // Feature-detected on load — the button only shows up on browsers that
+    // actually support fullscreening an arbitrary element. iPhone Safari
+    // never has, going back years (only <video> elements), so this keeps
+    // the button from just sitting there doing nothing for those users.
+    function initFullscreenButton() {
+      const btn = document.getElementById('fullscreenBtn');
+      const el = document.documentElement;
+      const supported = !!(el.requestFullscreen || el.webkitRequestFullscreen);
+      if (!supported) return;
+      btn.style.display = 'flex';
+    }
+
+    function toggleFullscreen() {
+      const isFull = document.fullscreenElement || document.webkitFullscreenElement;
+      if (!isFull) {
+        const el = document.documentElement;
+        const req = el.requestFullscreen || el.webkitRequestFullscreen;
+        if (req) req.call(el).catch(() => {});
+      } else {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) exit.call(document).catch(() => {});
+      }
+    }
+
     function cycleSidebarState(forceState) {
       const order = ['peek', 'icons', 'full'];
       if (forceState) {
@@ -2490,6 +2524,31 @@
       });
     }
 
+    // Right-click "複製連結" — copies a file/folder's Drive URL straight to
+    // the clipboard. Handy now that there are more and more small GAS tools
+    // that just need a URL as input, instead of having to open the item and
+    // copy from the address bar.
+    function copyItemLink(item) {
+      const url = item.type === 'folder'
+        ? 'https://drive.google.com/drive/folders/' + (item.targetId || item.id)
+        : 'https://drive.google.com/file/d/' + item.targetId + '/view';
+      copyTextToClipboard(url).then(() => {
+        alert('連結已複製到剪貼簿：\n' + url);
+      }).catch(() => {
+        prompt('自動複製失敗，請手動複製這個連結：', url);
+      });
+    }
+
+    function copyCurrentDesktopLink() {
+      const folderId = currentBrowseFolderId || currentFolderId;
+      const url = 'https://drive.google.com/drive/folders/' + folderId;
+      copyTextToClipboard(url).then(() => {
+        alert('目前這個資料夾的連結已複製到剪貼簿：\n' + url);
+      }).catch(() => {
+        prompt('自動複製失敗，請手動複製這個連結：', url);
+      });
+    }
+
     function copyTextToClipboard(text) {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         return navigator.clipboard.writeText(text);
@@ -2863,6 +2922,7 @@
       const entries = [{ label: '📂 開啟', action: openAction }];
       if (item.type === 'drive') {
         entries.push({ label: '🔍 在雲端硬碟中檢視', action: () => window.open('https://drive.google.com/file/d/' + item.targetId + '/view', '_blank') });
+        entries.push({ label: '📋 複製連結', action: () => copyItemLink(item) });
         entries.push({ sep: true });
         entries.push({ label: '🖼️ 更換圖示', action: () => openIconPicker(item) });
         entries.push({ label: '🔊 設定開啟音效', action: () => openLaunchSoundModal(item) });
@@ -2878,6 +2938,7 @@
         });
       } else if (item.type === 'folder') {
         entries.push({ label: '🔍 在雲端硬碟中檢視', action: () => window.open('https://drive.google.com/drive/folders/' + (item.targetId || item.id), '_blank') });
+        entries.push({ label: '📋 複製連結', action: () => copyItemLink(item) });
         entries.push({ sep: true });
         entries.push({ label: '🖼️ 更換圖示', action: () => openIconPicker(item) });
         entries.push({ label: '🔊 設定開啟音效', action: () => openLaunchSoundModal(item) });
